@@ -72,16 +72,20 @@ function TransactionLimitsSettings() {
 }
 
 function NotificationSettings() {
-  const preferences = useStore((state) => state.notificationPreferences)
+  const userId = useStore((state) => state.user)!.id
+  const preferences = useStore((state) => state.notificationPreferences[userId]) ?? DEFAULT_NOTIFICATION_PREFERENCES
   const updatePreference = (id: string, enabled: boolean) => {
     useStore.setState((state) => ({
-      notificationPreferences: { ...state.notificationPreferences, [id]: enabled },
+      notificationPreferences: {
+        ...state.notificationPreferences,
+        [userId]: { ...DEFAULT_NOTIFICATION_PREFERENCES, ...state.notificationPreferences[userId], [id]: enabled },
+      },
     }))
   }
 
   return (
     <div className="max-w-2xl space-y-5">
-      <p className="fine">Preferences are saved in this browser for the demo account.</p>
+      <p className="fine">Preferences are saved in this browser for this account.</p>
       {NOTIFICATION_GROUPS.map((group) => (
         <section key={group.id}>
           <h2 className="mb-2 text-sm font-semibold">{group.title}</h2>
