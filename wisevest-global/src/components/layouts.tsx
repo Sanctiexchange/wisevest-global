@@ -4,6 +4,7 @@ import { Logo, RiskNotice, cx } from './ui'
 import { useStore } from '../store'
 import { admin, auth, resetDemo } from '../api'
 import { ADMIN_ACTORS } from '../lib/types'
+import SupportModal from './SupportModal'
 
 export function PublicLayout() {
   const user = useStore((s) => s.user)
@@ -42,33 +43,36 @@ function Shell({ items, role, children, extra }: { items: Item[]; role: string; 
   const user = useStore((s) => s.user)
   const out = () => { auth.logout(); navigate('/') }
   return (
+    <>
     <div className="grid min-h-screen md:grid-cols-[240px_1fr]">
-      <aside className="sticky top-0 hidden h-screen flex-col gap-1 border-r border-line bg-surface p-5 md:flex">
-        <Logo />
-        <div className="mb-4 mt-1 text-[0.72rem] uppercase tracking-widest text-orchid">{role}</div>
+      <aside className="sticky top-0 hidden h-screen flex-col gap-1 border-r border-[#0F3D33] bg-[#0B3D3B] p-5 md:flex">
+        <Logo className="text-white [&>span]:!text-[#BBEC04]" />
+        <div className="mb-4 mt-1 text-[0.72rem] uppercase tracking-widest text-[#BBEC04]">{role}</div>
         {items.map((i) => (
-          <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => cx('flex items-center gap-3 rounded-xl border px-3.5 py-3 text-sm font-medium', isActive ? 'border-neon/30 bg-brand-soft text-ink' : 'border-transparent text-muted hover:text-ink')}>
+          <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => cx('flex items-center gap-3 rounded-xl border px-3.5 py-3 text-sm font-medium transition-colors', isActive ? 'border-[#0F3D33] bg-[#0F3D33] text-[#BBEC04]' : 'border-transparent text-white/75 hover:bg-white/10 hover:text-white')}>
             <span aria-hidden>{i.icon}</span>{i.label}
           </NavLink>
         ))}
         <div className="mt-auto space-y-3">
           {extra}
-          <div className="text-xs text-muted">{user?.email}</div>
-          <button onClick={out} className="text-sm text-muted hover:text-ink">Sign out</button>
+          <div className="text-xs text-white/70">{user?.email}</div>
+          <button onClick={out} className="text-sm text-white/70 hover:text-white">Sign out</button>
         </div>
       </aside>
       <main className="mx-auto w-full max-w-[1100px] px-4 pb-28 pt-6 md:px-7 md:pb-10">{children}</main>
-      <nav className="fixed inset-x-0 bottom-0 z-[70] flex overflow-x-auto border-t border-line bg-surface/95 px-1 pt-1.5 backdrop-blur-xl md:hidden" style={{ paddingBottom: 'calc(6px + env(safe-area-inset-bottom,0px))' }}>
+      <nav aria-label="Dashboard navigation" className="fixed inset-x-0 bottom-0 z-[70] flex overflow-x-auto border-t border-[#0F3D33] bg-[#0B3D3B] px-1 pt-1.5 backdrop-blur-xl md:hidden" style={{ paddingBottom: 'calc(6px + env(safe-area-inset-bottom,0px))' }}>
         {items.map((i) => (
-          <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => cx('flex min-w-[64px] flex-1 flex-col items-center gap-0.5 py-1.5 text-[0.68rem]', isActive ? 'text-neon' : 'text-muted')}>
+          <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => cx('flex min-w-[64px] flex-1 flex-col items-center gap-0.5 py-1.5 text-[0.68rem]', isActive ? 'font-semibold text-[#BBEC04]' : 'text-white/70 hover:text-white')}>
             <span className="text-lg" aria-hidden>{i.icon}</span>{i.label}
           </NavLink>
         ))}
-        <button type="button" onClick={out} className="flex min-w-[64px] flex-1 flex-col items-center gap-0.5 py-1.5 text-[0.68rem] text-muted">
+        <button type="button" onClick={out} className="flex min-w-[64px] flex-1 flex-col items-center gap-0.5 py-1.5 text-[0.68rem] text-white/70 hover:text-white">
           <span className="text-lg" aria-hidden>⇥</span>Sign out
         </button>
       </nav>
     </div>
+    <SupportModal />
+    </>
   )
 }
 
@@ -132,11 +136,11 @@ export function AdminLayout() {
   ]
   const extra = (
     <div>
-      <label className="mb-1 block text-xs text-muted" htmlFor="actor">Acting as (demo of dual control)</label>
+      <label className="mb-1 block text-xs text-white/80" htmlFor="actor">Acting as (demo of dual control)</label>
       <select id="actor" className="input !py-2 text-sm" value={actor} onChange={(e) => admin.setActor(e.target.value)}>
         {ADMIN_ACTORS.map((a) => <option key={a}>{a}</option>)}
       </select>
-      <button onClick={resetDemo} className="mt-3 text-xs text-muted underline">Reset demo data</button>
+      <button onClick={resetDemo} className="mt-3 text-xs text-[#BBEC04] underline">Reset demo data</button>
     </div>
   )
   return (

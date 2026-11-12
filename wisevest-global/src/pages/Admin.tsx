@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../store'
 import { admin, ApiError } from '../api'
-import { money } from '../lib/format'
-import { DUAL_APPROVAL_THRESHOLD, type KycDocuments, type Project } from '../lib/types'
+import { downloadCsv, money, parseAmount, today } from '../lib/format'
+import { DUAL_APPROVAL_THRESHOLD, type Category, type KycDocuments, type NewProject, type Project } from '../lib/types'
 import { Button, Empty, Field, Modal, PageTitle, Progress, Tag, useToast } from '../components/ui'
 
 type Ask = { title: string; text: string; reason?: boolean; run: (reason: string) => Promise<void> } | null
@@ -41,6 +41,8 @@ const Row = ({ children, actions }: { children: React.ReactNode; actions?: React
   </div>
 )
 const small = '!px-4 !py-2 !text-[0.82rem]'
+const PROJECT_CATEGORIES = ['Bitcoin', 'Energy', 'Real estate'] as const
+const PROJECT_RISK_LEVELS = ['High', 'Medium', 'Low–Medium'] as const
 
 function KycFilePreview({ label, file }: { label: string; file?: File }) {
   const [url, setUrl] = useState('')
@@ -205,11 +207,86 @@ export function AdminDeposits() {
 export function AdminProjects() {
   const projects = useStore((s) => s.projects)
   const toast = useToast()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createBusy, setCreateBusy] = useState(false)
+  const [createError, setCreateError] = useState('')
+  const [newProject, setNewProject] = useState({
+    name: '',
+    category: 'Bitcoin' as Category,
+    icon: '₿',
+    risk: 'Medium' as Project['risk'],
+    minInvest: '',
+    term: '',
+    targetReturn: '',
+    goal: '',
+    fees: '',
+    exit: '',
+    description: '',
+    risks: '',
+  })
   const [target, setTarget] = useState<Project | null>(null)
   const [pct, setPct] = useState('')
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const resetCreateForm = () => {
+    setNewProject({
+      name: '',
+      category: 'Bitcoin',
+      icon: '₿',
+      risk: 'Medium',
+      minInvest: '',
+      term: '',
+      targetReturn: '',
+      goal: '',
+      fees: '',
+      exit: '',
+      description: '',
+      risks: '',
+    })
+    setCreateError('')
+  }
+  const createProject = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setCreateError('')
+    const riskLines = newProject.risks.split('\n').map((line) => line.trim()).filter(Boolean)
+    const risks = riskLines.map((line) => {
+      const separator = line.indexOf(':')
+      return separator < 0
+        ? { title: line, text: '' }
+        : { title: line.slice(0, separator).trim(), text: line.slice(separator + 1).trim() }
+    })
+    if (risks.length === 0 || risks.some((risk) => !risk.title || !risk.text)) {
+      setCreateError('Add at least one risk using “Title: description” on each line.')
+      return
+    }
+
+    const input: NewProject = {
+      name: newProject.name,
+      category: newProject.category,
+      icon: newProject.icon,
+      risk: newProject.risk,
+      minInvest: parseAmount(newProject.minInvest),
+      term: newProject.term,
+      targetReturn: newProject.targetReturn,
+      goal: newProject.goal,
+      fees: newProject.fees,
+      exit: newProject.exit,
+      description: newProject.description,
+      risks,
+    }
+    setCreateBusy(true)
+    try {
+      const project = await admin.createProject(input)
+      toast(`${project.name} added as a draft.`)
+      setCreateOpen(false)
+      resetCreateForm()
+    } catch (issue) {
+      setCreateError(issue instanceof ApiError ? issue.message : 'Could not create the project.')
+    } finally {
+      setCreateBusy(false)
+    }
+  }
   const publish = async () => {
     if (!target) return
     setBusy(true); setErr('')
@@ -219,7 +296,13 @@ export function AdminProjects() {
   }
   return (
     <>
-      <PageTitle title="Projects" />
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold md:text-[1.7rem]">Projects</h1>
+          <p className="mt-1 text-sm text-muted">Create projects as drafts, then review and publish them.</p>
+        </div>
+        <Button onClick={() => { resetCreateForm(); setCreateOpen(true) }}>Add new project</Button>
+      </div>
       <div className="card">
         {projects.map((p) => (
           <Row key={p.id} actions={(<>
@@ -229,12 +312,75 @@ export function AdminProjects() {
             <Button variant="ghost" className={small} onClick={() => setTarget(p)}>Post valuation</Button>
           </>)}>
             <b>{p.name}</b>
-            <div className="fine">Last valuation: {p.lastValuation}</div>
+            <div className="fine">Category: {p.category} · Risk: {p.risk} · Last valuation: {p.lastValuation}</div>
             <div className="mt-1.5 max-w-[240px]"><Progress value={p.raisedPct} /></div>
             <div className="fine">{p.raisedPct}% funded</div>
           </Row>
         ))}
       </div>
+      <Modal open={createOpen} onClose={() => { if (!createBusy) { setCreateOpen(false); resetCreateForm() } }}>
+        <h2 className="text-xl font-bold">Add new project</h2>
+        <p className="mt-1 text-sm text-muted">New projects are saved as drafts and stay hidden from investors until opened.</p>
+        <form className="mt-2" onSubmit={(event) => { void createProject(event) }}>
+          <Field label="Project name" htmlFor="project-name">
+            <input id="project-name" className="input" value={newProject.name} onChange={(event) => setNewProject((current) => ({ ...current, name: event.target.value }))} maxLength={100} required />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Category" htmlFor="project-category">
+              <select id="project-category" className="input" value={newProject.category} onChange={(event) => {
+                const category = PROJECT_CATEGORIES.find((item) => item === event.target.value)
+                if (category) setNewProject((current) => ({ ...current, category }))
+              }}>
+                {PROJECT_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
+              </select>
+            </Field>
+            <Field label="Risk level" htmlFor="project-risk">
+              <select id="project-risk" className="input" value={newProject.risk} onChange={(event) => {
+                const risk = PROJECT_RISK_LEVELS.find((item) => item === event.target.value)
+                if (risk) setNewProject((current) => ({ ...current, risk }))
+              }}>
+                {PROJECT_RISK_LEVELS.map((risk) => <option key={risk}>{risk}</option>)}
+              </select>
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Project icon" htmlFor="project-icon">
+              <input id="project-icon" className="input" value={newProject.icon} onChange={(event) => setNewProject((current) => ({ ...current, icon: event.target.value }))} maxLength={4} required />
+            </Field>
+            <Field label="Minimum investment (USD)" htmlFor="project-minimum">
+              <input id="project-minimum" type="number" min="0.01" step="0.01" className="input" value={newProject.minInvest} onChange={(event) => setNewProject((current) => ({ ...current, minInvest: event.target.value }))} placeholder="e.g. 500" required />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Term" htmlFor="project-term">
+              <input id="project-term" className="input" value={newProject.term} onChange={(event) => setNewProject((current) => ({ ...current, term: event.target.value }))} placeholder="e.g. 24 months" required />
+            </Field>
+            <Field label="Target return" htmlFor="project-return">
+              <input id="project-return" className="input" value={newProject.targetReturn} onChange={(event) => setNewProject((current) => ({ ...current, targetReturn: event.target.value }))} placeholder="e.g. 8–12% (target)" required />
+            </Field>
+          </div>
+          <Field label="Funding goal" htmlFor="project-goal">
+            <input id="project-goal" className="input" value={newProject.goal} onChange={(event) => setNewProject((current) => ({ ...current, goal: event.target.value }))} placeholder="e.g. $2.0M" required />
+          </Field>
+          <Field label="Fees" htmlFor="project-fees">
+            <input id="project-fees" className="input" value={newProject.fees} onChange={(event) => setNewProject((current) => ({ ...current, fees: event.target.value }))} placeholder="Describe management and performance fees" required />
+          </Field>
+          <Field label="Exit terms" htmlFor="project-exit">
+            <textarea id="project-exit" className="input min-h-20 resize-y" value={newProject.exit} onChange={(event) => setNewProject((current) => ({ ...current, exit: event.target.value }))} required />
+          </Field>
+          <Field label="Project description" htmlFor="project-description">
+            <textarea id="project-description" className="input min-h-24 resize-y" value={newProject.description} onChange={(event) => setNewProject((current) => ({ ...current, description: event.target.value }))} maxLength={1000} required />
+          </Field>
+          <Field label="Risk disclosures (one “Title: description” per line)" htmlFor="project-risks">
+            <textarea id="project-risks" className="input min-h-24 resize-y" value={newProject.risks} onChange={(event) => setNewProject((current) => ({ ...current, risks: event.target.value }))} placeholder={'Liquidity: Exits may be limited.\nMarket risk: The investment may lose value.'} required />
+          </Field>
+          <div className="err" role="alert">{createError}</div>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button type="button" variant="ghost" className="!px-4 !py-2 text-sm" disabled={createBusy} onClick={() => { setCreateOpen(false); resetCreateForm() }}>Cancel</Button>
+            <Button type="submit" className="!px-4 !py-2 text-sm" loading={createBusy}>Save as draft</Button>
+          </div>
+        </form>
+      </Modal>
       <Modal open={!!target} onClose={() => setTarget(null)}>
         <h2 className="text-xl font-bold">Post valuation update</h2>
         <p className="fine">{target?.name}. Clients see this as the reported value, so it needs a documented source.</p>
@@ -248,15 +394,56 @@ export function AdminProjects() {
 
 export function AdminAudit() {
   const audit = useStore((s) => s.audit)
+  const [search, setSearch] = useState('')
+  const [adminFilter, setAdminFilter] = useState('All')
+  const searchTerm = search.trim().toLowerCase()
+  const admins = [...new Set(audit.map((entry) => entry.actor))].sort()
+  const filteredAudit = audit.filter((entry) => {
+    const matchesAdmin = adminFilter === 'All' || entry.actor === adminFilter
+    const matchesSearch = !searchTerm || [entry.time, entry.actor, entry.action, entry.reason]
+      .some((value) => value.toLowerCase().includes(searchTerm))
+    return matchesAdmin && matchesSearch
+  })
+  const exportAudit = () => downloadCsv(
+    `wisevest-audit-log-${today()}.csv`,
+    ['Time', 'Admin', 'Action', 'Reason or note'],
+    filteredAudit.map((entry) => [entry.time, entry.actor, entry.action, entry.reason]),
+  )
   return (
     <>
-      <PageTitle title="Audit log" sub="Entries cannot be edited or deleted from this screen." />
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div className="mb-0">
+          <PageTitle title="Audit log" sub="Entries cannot be edited or deleted from this screen." />
+        </div>
+        <Button type="button" variant="ghost" className="!px-4 !py-2 text-sm" disabled={filteredAudit.length === 0} onClick={exportAudit}>
+          <span aria-hidden>↓</span> Export CSV
+        </Button>
+      </div>
+      <div className="mb-3 flex flex-wrap gap-2">
+        <input
+          type="search"
+          aria-label="Search audit log"
+          className="input !w-full !py-2 text-sm sm:!w-64"
+          placeholder="Search audit log"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        <select
+          aria-label="Filter audit log by admin"
+          className="input !w-auto !py-2 text-sm"
+          value={adminFilter}
+          onChange={(event) => setAdminFilter(event.target.value)}
+        >
+          <option value="All">All admins</option>
+          {admins.map((actor) => <option key={actor} value={actor}>{actor}</option>)}
+        </select>
+      </div>
       <div className="card overflow-x-auto">
         <table className="w-full min-w-[560px] text-left text-sm">
           <thead className="text-xs uppercase tracking-wider text-muted"><tr>{['Time', 'Admin', 'Action', 'Reason or note'].map((h) => <th key={h} className="border-b border-line p-2.5 font-medium">{h}</th>)}</tr></thead>
-          <tbody>{audit.map((a) => <tr key={a.id}>{[a.time, a.actor, a.action, a.reason].map((v, i) => <td key={i} className="border-b border-line p-3 align-top">{v}</td>)}</tr>)}</tbody>
+          <tbody>{filteredAudit.map((a) => <tr key={a.id}>{[a.time, a.actor, a.action, a.reason].map((v, i) => <td key={i} className="border-b border-line p-3 align-top">{v}</td>)}</tr>)}</tbody>
         </table>
-        {audit.length === 0 && <Empty>No actions yet.</Empty>}
+        {filteredAudit.length === 0 && <Empty>{audit.length === 0 ? 'No actions yet.' : 'No entries match the current search or filter.'}</Empty>}
       </div>
     </>
   )

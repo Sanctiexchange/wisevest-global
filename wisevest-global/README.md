@@ -33,7 +33,11 @@ It also supports admin users who can:
 - Account settings for profile details, transaction rules, notifications, referrals, and security
 - Investment flows for funding and allocation decisions
 - Withdrawal process with compliance and 2FA-related checks
+- Transaction disputes and in-app Help & Support requests
+- CSV exports for client transactions and the admin audit log
+- Search and filters for transaction and audit tables; exports respect active filters
 - Admin console for operations and compliance review
+- Admin project creation with required risk disclosures; new projects remain drafts until explicitly opened
 - Persistent mock data layer using Zustand to simulate a database
 - Responsive UI built with Tailwind CSS
 
@@ -54,6 +58,7 @@ The app uses a simplified mock architecture intended to mirror a real fintech pr
 - `src/pages/` contains the public, client, and admin screens
 - `src/components/` contains shared layout, chart, and UI primitives
 - `src/lib/settings.ts` defines the account settings tabs and demo transaction/notification configuration
+- Admin project creation validates required offering details and disclosures before adding a draft to the mock store
 - `src/api.ts` contains the mocked business logic and rules
 - `src/store.ts` holds the persisted mock data store
 
@@ -70,6 +75,7 @@ wisevest-global/
 │   ├── components/
 │   │   ├── charts.tsx
 │   │   ├── layouts.tsx
+│   │   ├── SupportModal.tsx
 │   │   └── ui.tsx
 │   ├── lib/
 │   │   └── settings.ts

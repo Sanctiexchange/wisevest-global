@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { AuditEntry, Deposit, Investment, KycCase, KycDocuments, Project, Tx, User, Withdrawal } from './lib/types'
+import type { AuditEntry, Deposit, Investment, KycCase, KycDocuments, Project, SupportRequest, TransactionDispute, Tx, User, Withdrawal } from './lib/types'
 import { DEMO_USER_ID, seedDeposits, seedKyc, seedProjects, seedUsers, seedWithdrawals } from './lib/seed'
 
 /**

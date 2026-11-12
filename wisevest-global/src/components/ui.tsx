@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom'
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ')
 
-export function Logo({ to = '/' }: { to?: string }) {
+export function Logo({ to = '/', className }: { to?: string; className?: string }) {
   return (
-    <Link to={to} className="font-head text-xl font-bold">
+    <Link to={to} className={cx('font-head text-xl font-bold', className)}>
       Wise<span className="text-neon">Vest</span> Global
     </Link>
   )
@@ -102,6 +102,11 @@ export function Modal({ open, onClose, children }: { open: boolean; onClose: () 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div role="dialog" aria-modal="true" className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-[22px] border border-line bg-surface bg-brand-soft p-6">
+        <div className="-mt-2 mb-2">
+          <button type="button" onClick={onClose} aria-label="Back or close dialog" className="grid h-8 w-8 place-items-center rounded-full text-neon transition hover:bg-brand-soft">
+            <span aria-hidden className="text-xl leading-none">←</span>
+          </button>
+        </div>
         {children}
       </div>
     </div>
