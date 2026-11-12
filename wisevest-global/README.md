@@ -30,6 +30,7 @@ It also supports admin users who can:
 - Investor registration and login flow
 - Guided KYC flow with validation rules
 - Client dashboard with balances, portfolio activity, and transactions
+- Account settings for profile details, transaction rules, notifications, referrals, and security
 - Investment flows for funding and allocation decisions
 - Withdrawal process with compliance and 2FA-related checks
 - Admin console for operations and compliance review
@@ -52,6 +53,7 @@ The app uses a simplified mock architecture intended to mirror a real fintech pr
 - `src/App.tsx` defines the route structure
 - `src/pages/` contains the public, client, and admin screens
 - `src/components/` contains shared layout, chart, and UI primitives
+- `src/lib/settings.ts` defines the account settings tabs and demo transaction/notification configuration
 - `src/api.ts` contains the mocked business logic and rules
 - `src/store.ts` holds the persisted mock data store
 
@@ -69,12 +71,15 @@ wisevest-global/
 │   │   ├── charts.tsx
 │   │   ├── layouts.tsx
 │   │   └── ui.tsx
+│   ├── lib/
+│   │   └── settings.ts
 │   └── pages/
 │       ├── Admin.tsx
 │       ├── Auth.tsx
 │       ├── Client.tsx
 │       ├── Landing.tsx
-│       └── Projects.tsx
+│       ├── Projects.tsx
+│       └── Settings.tsx
 ├── index.html
 ├── package.json
 ├── package-lock.json

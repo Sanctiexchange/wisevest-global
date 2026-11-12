@@ -1,6 +1,7 @@
 import { useStore, type DB } from './store'
 import { DEMO_USER_ID, seedInvestments, seedTxs } from './lib/seed'
 import { DUAL_APPROVAL_THRESHOLD, type KycDocuments, type Method, type Project, type Tx, type User } from './lib/types'
+import { MINIMUM_DEPOSIT, MINIMUM_WITHDRAWAL } from './lib/settings'
 import { today, uid } from './lib/format'
 
 export class ApiError extends Error {}
@@ -43,6 +44,15 @@ function getBalance(userId: string) {
 function patchTx(id: string | undefined, patch: Partial<Tx>) {
   if (!id) return
   set((s) => ({ txs: s.txs.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
+}
+
+async function updateTwoFactor(enabled: boolean) {
+  await wait()
+  const user = requireUser()
+  set((s) => ({
+    user: s.user ? { ...s.user, twoFa: enabled } : s.user,
+    users: s.users.map((item) => item.id === user.id ? { ...item, twoFa: enabled } : item),
+  }))
 }
 
 /* ---------------- Session ---------------- */
@@ -111,8 +121,31 @@ export const auth = {
     set({ user: null, cash: 0 })
   },
   async enable2fa() {
+    return updateTwoFactor(true)
+  },
+  async setTwoFactor(enabled: boolean) {
+    return updateTwoFactor(enabled)
+  },
+  async changePassword(currentPassword: string, newPassword: string) {
     await wait()
-    set((s) => ({ user: s.user ? { ...s.user, twoFa: true } : s.user }))
+    const user = requireUser()
+    const credential = get().credentials.find((item) => normalizeEmail(item.email) === normalizeEmail(user.email))
+    if (!credential) throw new ApiError('Password changes are unavailable for demo accounts.')
+    if (credential.password !== currentPassword) throw new ApiError('Current password is incorrect.')
+    const score =
+      (newPassword.length >= 10 ? 1 : 0) +
+      (/[a-z]/.test(newPassword) && /[A-Z]/.test(newPassword) ? 1 : 0) +
+      (/\d/.test(newPassword) ? 1 : 0) +
+      (/[^A-Za-z0-9]/.test(newPassword) ? 1 : 0)
+    if (newPassword.length < 10 || score < 3)
+      throw new ApiError('Use 10+ characters with a mix of letters, numbers and symbols.')
+    set((s) => ({
+      credentials: s.credentials.map((item) =>
+        normalizeEmail(item.email) === normalizeEmail(user.email)
+          ? { ...item, password: newPassword }
+          : item,
+      ),
+    }))
   },
 }
 
@@ -144,7 +177,7 @@ export const wallet = {
   async deposit(method: Method, amount: number) {
     await wait()
     const u = requireApproved()
-    if (!(amount >= 100)) throw new ApiError('Minimum deposit is $100.')
+    if (!(amount >= MINIMUM_DEPOSIT)) throw new ApiError(`Minimum deposit is $${MINIMUM_DEPOSIT}.`)
     const tx: Tx = { id: uid('T'), date: today(), type: 'Deposit', detail: method, amount, status: 'Pending' }
     const needed = method === 'Bank' ? 1 : method === 'BTC' ? 3 : 20
     set((s) => ({
@@ -158,7 +191,7 @@ export const wallet = {
     if (!u.twoFa) throw new ApiError('Turn on two-factor authentication before you withdraw.')
     if (!/^\d{6}$/.test(code)) throw new ApiError('Enter your 6-digit authenticator code.')
     if (destination.trim().length < 8) throw new ApiError('Enter a valid destination.')
-    if (!(amount >= 50)) throw new ApiError('Minimum withdrawal is $50.')
+    if (!(amount >= MINIMUM_WITHDRAWAL)) throw new ApiError(`Minimum withdrawal is $${MINIMUM_WITHDRAWAL}.`)
     const balance = getBalance(u.id)
     if (amount > balance) throw new ApiError('Amount is more than your available balance.')
     const tx: Tx = { id: uid('T'), date: today(), type: 'Withdrawal', detail: method, amount: -amount, status: 'Pending' }

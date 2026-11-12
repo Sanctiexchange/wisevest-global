@@ -5,6 +5,7 @@ import { wallet, auth, ApiError } from '../api'
 import { money, parseAmount, signed } from '../lib/format'
 import { DEMO_USER_ID, portfolioHistory } from '../lib/seed'
 import type { Method } from '../lib/types'
+import { MINIMUM_DEPOSIT } from '../lib/settings'
 import { Button, Empty, Field, PageTitle, Progress, RiskNotice, Segmented, Tag, cx, riskTone, useToast } from '../components/ui'
 import { Donut, LineChart } from '../components/charts'
 
@@ -117,7 +118,7 @@ export function Deposit() {
   const generate = () => {
     const n = parseAmount(amount)
     if (!approved) return setErr('Complete identity verification first.')
-    if (!Number.isFinite(n) || n < 100) return setErr('Minimum deposit is $100.')
+    if (!Number.isFinite(n) || n < MINIMUM_DEPOSIT) return setErr(`Minimum deposit is ${money(MINIMUM_DEPOSIT, 0)}.`)
     setErr(''); setShown(true)
   }
   const sent = async () => {
@@ -132,8 +133,8 @@ export function Deposit() {
       <p className="mb-2 mt-1 text-sm text-muted">Choose a payment method and amount.</p>
       <label className="lbl">Method</label>
       <Segmented options={METHODS} value={method} onChange={(m) => { setMethod(m); setShown(false) }} labels={labelMap} disabledOptions={['Bank']} />
-      <Field label="Amount (USD)" htmlFor="d" error={err}><input id="d" inputMode="decimal" className="input" placeholder="Minimum $100" value={amount} onChange={(e) => { setAmount(e.target.value); setShown(false) }} /></Field>
-      <div className="fine">Network: <b className="text-ink">{NETWORK[method]}</b> · Minimum deposit $100</div>
+      <Field label="Amount (USD)" htmlFor="d" error={err}><input id="d" inputMode="decimal" className="input" placeholder={`Minimum ${money(MINIMUM_DEPOSIT, 0)}`} value={amount} onChange={(e) => { setAmount(e.target.value); setShown(false) }} /></Field>
+      <div className="fine">Network: <b className="text-ink">{NETWORK[method]}</b> · Minimum deposit {money(MINIMUM_DEPOSIT, 0)}</div>
       {!shown ? <Button block onClick={generate}>Generate deposit details</Button> : (
         <>
           <div className="mt-4 whitespace-pre-line break-all rounded-2xl border border-dashed border-violet bg-bg p-4 font-mono text-[0.82rem]">{ADDR[method]}</div>

@@ -5,6 +5,7 @@ import { Login, Register } from './pages/Auth'
 import { ProjectDetail, ProjectsPage } from './pages/Projects'
 import { Dashboard, Deposit, Investments, Transactions, Withdraw } from './pages/Client'
 import { AdminAudit, AdminDeposits, AdminKyc, AdminOverview, AdminProjects, AdminWithdrawals } from './pages/Admin'
+import Settings from './pages/Settings'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="deposit" element={<Deposit />} />
         <Route path="withdraw" element={<Withdraw />} />
         <Route path="transactions" element={<Transactions />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="admin" element={<AdminLayout />}>
         <Route index element={<AdminOverview />} />
