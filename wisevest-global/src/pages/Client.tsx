@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../store'
 import { wallet, auth, ApiError } from '../api'
-import { money, parseAmount, signed } from '../lib/format'
+import { downloadCsv, money, parseAmount, signed, today } from '../lib/format'
 import { DEMO_USER_ID, portfolioHistory } from '../lib/seed'
 import type { DisputeReason, Method, Tx } from '../lib/types'
 import { MINIMUM_DEPOSIT } from '../lib/settings'
@@ -202,6 +202,20 @@ export function Transactions() {
   const [disputeSubmitted, setDisputeSubmitted] = useState(false)
   const [f, setF] = useState<(typeof TYPES)[number]>('All')
   const rows = txs.filter((t) => f === 'All' || t.type === f)
+  const exportTransactions = () => {
+    downloadCsv(
+      `wisevest-transactions-${f.toLowerCase()}-${today()}.csv`,
+      ['Date', 'Type', 'Details', 'Amount (USD)', 'Status', 'Dispute status'],
+      rows.map((transaction) => [
+        transaction.date,
+        transaction.type,
+        transaction.detail,
+        transaction.amount,
+        transaction.status,
+        disputes.some((dispute) => dispute.transactionId === transaction.id) ? 'Dispute logged' : 'Not reported',
+      ]),
+    )
+  }
 
   const closeDispute = () => {
     setSelectedTransaction(null)
@@ -229,8 +243,13 @@ export function Transactions() {
   return (
     <>
       <PageTitle title="Transactions" sub="Review activity and report an issue with any transaction." />
-      <div className="mb-3.5 flex flex-wrap gap-2">
-        {TYPES.map((t) => <button key={t} onClick={() => setF(t)} className={cx('rounded-full border px-4 py-2 text-sm', f === t ? 'border-neon text-ink' : 'border-line text-muted')}>{t === 'All' ? 'All' : t + 's'}</button>)}
+      <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {TYPES.map((t) => <button key={t} onClick={() => setF(t)} className={cx('rounded-full border px-4 py-2 text-sm', f === t ? 'border-neon text-ink' : 'border-line text-muted')}>{t === 'All' ? 'All' : t + 's'}</button>)}
+        </div>
+        <Button type="button" variant="ghost" className="!px-4 !py-2 text-sm" disabled={rows.length === 0} onClick={exportTransactions}>
+          <span aria-hidden>↓</span> Export CSV
+        </Button>
       </div>
       <div className="card overflow-x-auto">
         <table className="w-full min-w-[690px] text-left text-sm">

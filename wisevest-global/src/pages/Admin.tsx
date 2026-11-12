@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../store'
 import { admin, ApiError } from '../api'
-import { money, parseAmount } from '../lib/format'
+import { downloadCsv, money, parseAmount, today } from '../lib/format'
 import { DUAL_APPROVAL_THRESHOLD, type Category, type KycDocuments, type NewProject, type Project } from '../lib/types'
 import { Button, Empty, Field, Modal, PageTitle, Progress, Tag, useToast } from '../components/ui'
 
@@ -394,9 +394,21 @@ export function AdminProjects() {
 
 export function AdminAudit() {
   const audit = useStore((s) => s.audit)
+  const exportAudit = () => downloadCsv(
+    `wisevest-audit-log-${today()}.csv`,
+    ['Time', 'Admin', 'Action', 'Reason or note'],
+    audit.map((entry) => [entry.time, entry.actor, entry.action, entry.reason]),
+  )
   return (
     <>
-      <PageTitle title="Audit log" sub="Entries cannot be edited or deleted from this screen." />
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div className="mb-0">
+          <PageTitle title="Audit log" sub="Entries cannot be edited or deleted from this screen." />
+        </div>
+        <Button type="button" variant="ghost" className="!px-4 !py-2 text-sm" disabled={audit.length === 0} onClick={exportAudit}>
+          <span aria-hidden>↓</span> Export CSV
+        </Button>
+      </div>
       <div className="card overflow-x-auto">
         <table className="w-full min-w-[560px] text-left text-sm">
           <thead className="text-xs uppercase tracking-wider text-muted"><tr>{['Time', 'Admin', 'Action', 'Reason or note'].map((h) => <th key={h} className="border-b border-line p-2.5 font-medium">{h}</th>)}</tr></thead>
