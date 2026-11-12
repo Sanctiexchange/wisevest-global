@@ -81,7 +81,8 @@ export function ClientLayout() {
     { to: '/app/investments', label: 'Invest', icon: '◈' },
     { to: '/app/deposit', label: 'Deposit', icon: '↓' },
     { to: '/app/withdraw', label: 'Withdraw', icon: '↑' },
-    { to: '/app/transactions', label: 'History', icon: '≡' },
+    { to: '/app/transactions', label: 'Transaction', icon: '≡' },
+    { to: '/app/settings', label: 'Settings', icon: '⚙' },
   ]
   const banner =
     user.kyc === 'approved' ? null : (
