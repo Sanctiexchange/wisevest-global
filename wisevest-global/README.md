@@ -35,6 +35,7 @@ It also supports admin users who can:
 - Withdrawal process with compliance and 2FA-related checks
 - Transaction disputes and in-app Help & Support requests
 - CSV exports for client transactions and the admin audit log
+- Search and filters for transaction and audit tables; exports respect active filters
 - Admin console for operations and compliance review
 - Admin project creation with required risk disclosures; new projects remain drafts until explicitly opened
 - Persistent mock data layer using Zustand to simulate a database

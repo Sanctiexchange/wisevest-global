@@ -394,10 +394,20 @@ export function AdminProjects() {
 
 export function AdminAudit() {
   const audit = useStore((s) => s.audit)
+  const [search, setSearch] = useState('')
+  const [adminFilter, setAdminFilter] = useState('All')
+  const searchTerm = search.trim().toLowerCase()
+  const admins = [...new Set(audit.map((entry) => entry.actor))].sort()
+  const filteredAudit = audit.filter((entry) => {
+    const matchesAdmin = adminFilter === 'All' || entry.actor === adminFilter
+    const matchesSearch = !searchTerm || [entry.time, entry.actor, entry.action, entry.reason]
+      .some((value) => value.toLowerCase().includes(searchTerm))
+    return matchesAdmin && matchesSearch
+  })
   const exportAudit = () => downloadCsv(
     `wisevest-audit-log-${today()}.csv`,
     ['Time', 'Admin', 'Action', 'Reason or note'],
-    audit.map((entry) => [entry.time, entry.actor, entry.action, entry.reason]),
+    filteredAudit.map((entry) => [entry.time, entry.actor, entry.action, entry.reason]),
   )
   return (
     <>
@@ -405,16 +415,35 @@ export function AdminAudit() {
         <div className="mb-0">
           <PageTitle title="Audit log" sub="Entries cannot be edited or deleted from this screen." />
         </div>
-        <Button type="button" variant="ghost" className="!px-4 !py-2 text-sm" disabled={audit.length === 0} onClick={exportAudit}>
+        <Button type="button" variant="ghost" className="!px-4 !py-2 text-sm" disabled={filteredAudit.length === 0} onClick={exportAudit}>
           <span aria-hidden>↓</span> Export CSV
         </Button>
+      </div>
+      <div className="mb-3 flex flex-wrap gap-2">
+        <input
+          type="search"
+          aria-label="Search audit log"
+          className="input !w-full !py-2 text-sm sm:!w-64"
+          placeholder="Search audit log"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        <select
+          aria-label="Filter audit log by admin"
+          className="input !w-auto !py-2 text-sm"
+          value={adminFilter}
+          onChange={(event) => setAdminFilter(event.target.value)}
+        >
+          <option value="All">All admins</option>
+          {admins.map((actor) => <option key={actor} value={actor}>{actor}</option>)}
+        </select>
       </div>
       <div className="card overflow-x-auto">
         <table className="w-full min-w-[560px] text-left text-sm">
           <thead className="text-xs uppercase tracking-wider text-muted"><tr>{['Time', 'Admin', 'Action', 'Reason or note'].map((h) => <th key={h} className="border-b border-line p-2.5 font-medium">{h}</th>)}</tr></thead>
-          <tbody>{audit.map((a) => <tr key={a.id}>{[a.time, a.actor, a.action, a.reason].map((v, i) => <td key={i} className="border-b border-line p-3 align-top">{v}</td>)}</tr>)}</tbody>
+          <tbody>{filteredAudit.map((a) => <tr key={a.id}>{[a.time, a.actor, a.action, a.reason].map((v, i) => <td key={i} className="border-b border-line p-3 align-top">{v}</td>)}</tr>)}</tbody>
         </table>
-        {audit.length === 0 && <Empty>No actions yet.</Empty>}
+        {filteredAudit.length === 0 && <Empty>{audit.length === 0 ? 'No actions yet.' : 'No entries match the current search or filter.'}</Empty>}
       </div>
     </>
   )

@@ -201,7 +201,24 @@ export function Transactions() {
   const [disputeBusy, setDisputeBusy] = useState(false)
   const [disputeSubmitted, setDisputeSubmitted] = useState(false)
   const [f, setF] = useState<(typeof TYPES)[number]>('All')
-  const rows = txs.filter((t) => f === 'All' || t.type === f)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'All' | Tx['status']>('All')
+  const searchTerm = search.trim().toLowerCase()
+  const rows = txs.filter((transaction) => {
+    const matchesType = f === 'All' || transaction.type === f
+    const matchesStatus = statusFilter === 'All' || transaction.status === statusFilter
+    const disputeStatus = disputes.some((dispute) => dispute.transactionId === transaction.id) ? 'dispute logged' : 'not reported'
+    const matchesSearch = !searchTerm || [
+      transaction.id,
+      transaction.date,
+      transaction.type,
+      transaction.detail,
+      String(transaction.amount),
+      transaction.status,
+      disputeStatus,
+    ].some((value) => value.toLowerCase().includes(searchTerm))
+    return matchesType && matchesStatus && matchesSearch
+  })
   const exportTransactions = () => {
     downloadCsv(
       `wisevest-transactions-${f.toLowerCase()}-${today()}.csv`,
@@ -247,9 +264,33 @@ export function Transactions() {
         <div className="flex flex-wrap gap-2">
           {TYPES.map((t) => <button key={t} onClick={() => setF(t)} className={cx('rounded-full border px-4 py-2 text-sm', f === t ? 'border-neon text-ink' : 'border-line text-muted')}>{t === 'All' ? 'All' : t + 's'}</button>)}
         </div>
-        <Button type="button" variant="ghost" className="!px-4 !py-2 text-sm" disabled={rows.length === 0} onClick={exportTransactions}>
-          <span aria-hidden>↓</span> Export CSV
-        </Button>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
+          <input
+            type="search"
+            aria-label="Search transactions"
+            className="input !w-full !py-2 text-sm sm:!w-52"
+            placeholder="Search transactions"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <select
+            aria-label="Filter transactions by status"
+            className="input !w-auto !py-2 text-sm"
+            value={statusFilter}
+            onChange={(event) => {
+              const status = event.target.value
+              setStatusFilter(status === 'Completed' || status === 'Pending' || status === 'Rejected' ? status : 'All')
+            }}
+          >
+            <option value="All">All statuses</option>
+            <option value="Completed">Completed</option>
+            <option value="Pending">Pending</option>
+            <option value="Rejected">Rejected</option>
+          </select>
+          <Button type="button" variant="ghost" className="!px-4 !py-2 text-sm" disabled={rows.length === 0} onClick={exportTransactions}>
+            <span aria-hidden>↓</span> Export CSV
+          </Button>
+        </div>
       </div>
       <div className="card overflow-x-auto">
         <table className="w-full min-w-[690px] text-left text-sm">
