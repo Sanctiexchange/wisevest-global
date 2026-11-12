@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { AuditEntry, Deposit, Investment, KycCase, KycDocuments, Project, Tx, User, Withdrawal } from './lib/types'
+import type { AuditEntry, Deposit, Investment, KycCase, KycDocuments, Project, SupportRequest, TransactionDispute, Tx, User, Withdrawal } from './lib/types'
 import { DEMO_USER_ID, seedDeposits, seedKyc, seedProjects, seedUsers, seedWithdrawals } from './lib/seed'
 import { DEFAULT_NOTIFICATION_PREFERENCES } from './lib/settings'
 
@@ -24,6 +24,8 @@ export interface DB {
   audit: AuditEntry[]
   adminActor: string
   notificationPreferences: Record<string, boolean>
+  disputes: TransactionDispute[]
+  supportRequests: SupportRequest[]
 }
 
 const initial = (): DB => ({
@@ -42,6 +44,8 @@ const initial = (): DB => ({
   audit: [],
   adminActor: 'Compliance A',
   notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
+  disputes: [],
+  supportRequests: [],
 })
 
 export const useStore = create<DB & { reset: () => void }>()(
@@ -52,7 +56,7 @@ export const useStore = create<DB & { reset: () => void }>()(
     }),
     {
       name: 'wisevest-mock-db-v1',
-      version: 4,
+      version: 5,
       partialize: (state) => ({ ...state, kycDocuments: {} }),
       migrate: (persistedState, version) => {
         const previous = persistedState as Partial<DB> & {

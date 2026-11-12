@@ -33,6 +33,7 @@ It also supports admin users who can:
 - Account settings for profile details, transaction rules, notifications, referrals, and security
 - Investment flows for funding and allocation decisions
 - Withdrawal process with compliance and 2FA-related checks
+- Transaction disputes and in-app Help & Support requests
 - Admin console for operations and compliance review
 - Persistent mock data layer using Zustand to simulate a database
 - Responsive UI built with Tailwind CSS

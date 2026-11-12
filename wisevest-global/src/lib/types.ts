@@ -54,6 +54,25 @@ export interface Tx {
   status: 'Completed' | 'Pending' | 'Rejected'
 }
 
+export type DisputeReason = 'DELAYED' | 'NOT_RECEIVED' | 'INCORRECT_AMOUNT' | 'OTHER'
+
+export interface TransactionDispute {
+  id: string
+  transactionId: string
+  reason: DisputeReason
+  description: string
+  createdAt: string
+  status: 'Under review'
+}
+
+export interface SupportRequest {
+  id: string
+  userId: string
+  topic: string
+  message: string
+  createdAt: string
+}
+
 export interface KycCase {
   id: string
   userId: string

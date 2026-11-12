@@ -1,6 +1,6 @@
 import { useStore, type DB } from './store'
 import { DEMO_USER_ID, seedInvestments, seedTxs } from './lib/seed'
-import { DUAL_APPROVAL_THRESHOLD, type KycDocuments, type Method, type Project, type Tx, type User } from './lib/types'
+import { DUAL_APPROVAL_THRESHOLD, type DisputeReason, type KycDocuments, type Method, type Project, type SupportRequest, type TransactionDispute, type Tx, type User } from './lib/types'
 import { MINIMUM_DEPOSIT, MINIMUM_WITHDRAWAL } from './lib/settings'
 import { today, uid } from './lib/format'
 
@@ -174,6 +174,26 @@ export const kyc = {
 
 /* ---------------- Client money flows ---------------- */
 export const wallet = {
+  async logDispute(transactionId: string, reason: DisputeReason, description: string) {
+    await wait()
+    requireUser()
+    if (!get().txs.some((transaction) => transaction.id === transactionId))
+      throw new ApiError('Transaction not found.')
+    if (get().disputes.some((dispute) => dispute.transactionId === transactionId))
+      throw new ApiError('A dispute has already been logged for this transaction.')
+    if (!['DELAYED', 'NOT_RECEIVED', 'INCORRECT_AMOUNT', 'OTHER'].includes(reason))
+      throw new ApiError('Choose a valid dispute reason.')
+    const dispute: TransactionDispute = {
+      id: uid('DSP'),
+      transactionId,
+      reason,
+      description: description.trim(),
+      createdAt: today(),
+      status: 'Under review',
+    }
+    set((state) => ({ disputes: [dispute, ...state.disputes] }))
+    return dispute
+  },
   async deposit(method: Method, amount: number) {
     await wait()
     const u = requireApproved()
@@ -221,6 +241,24 @@ export const wallet = {
       projects: s.projects.map((x) => (x.id === projectId ? { ...x, raisedPct: Math.min(100, x.raisedPct + 1) } : x)),
     }))
     return ref
+  },
+}
+
+export const support = {
+  async createRequest(topic: string, message: string) {
+    await wait()
+    const user = requireUser()
+    if (!topic.trim()) throw new ApiError('Choose a support topic.')
+    if (message.trim().length < 10) throw new ApiError('Please describe your issue in at least 10 characters.')
+    const request: SupportRequest = {
+      id: uid('SUP'),
+      userId: user.id,
+      topic: topic.trim(),
+      message: message.trim(),
+      createdAt: today(),
+    }
+    set((state) => ({ supportRequests: [request, ...state.supportRequests] }))
+    return request
   },
 }
 
