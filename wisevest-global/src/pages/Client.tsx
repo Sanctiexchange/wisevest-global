@@ -128,7 +128,11 @@ export function Deposit() {
     finally { setBusy(false) }
   }
   return (
-    <div className="card max-w-[560px]">
+    <div className="card mx-auto w-full max-w-[560px]">
+      <Link to="/app" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-muted transition hover:text-neon">
+        <span aria-hidden className="text-lg leading-none">←</span>
+        Back to dashboard
+      </Link>
       <h1 className="text-2xl font-bold">Deposit funds</h1>
       <p className="mb-2 mt-1 text-sm text-muted">Choose a payment method and amount.</p>
       <label className="lbl">Method</label>
@@ -164,7 +168,11 @@ export function Withdraw() {
     finally { setBusy(false) }
   }
   return (
-    <div className="card max-w-[560px]">
+    <div className="card mx-auto w-full max-w-[560px]">
+      <Link to="/app" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-muted transition hover:text-neon">
+        <span aria-hidden className="text-lg leading-none">←</span>
+        Back to dashboard
+      </Link>
       <h1 className="text-2xl font-bold">Withdraw</h1>
       <p className="mb-2 mt-1 text-sm text-muted">Available: <b className="text-ink">{money(cash, 2)}</b></p>
       {!user.twoFa && (
