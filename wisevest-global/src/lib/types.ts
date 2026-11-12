@@ -36,6 +36,8 @@ export interface Project {
   lastValuation: string
 }
 
+export type NewProject = Omit<Project, 'id' | 'raisedPct' | 'status' | 'lastValuation'>
+
 export interface Investment {
   id: string
   projectId: string

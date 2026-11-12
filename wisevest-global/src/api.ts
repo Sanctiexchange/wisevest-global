@@ -1,6 +1,6 @@
 import { useStore, type DB } from './store'
 import { DEMO_USER_ID, seedInvestments, seedTxs } from './lib/seed'
-import { DUAL_APPROVAL_THRESHOLD, type DisputeReason, type KycDocuments, type Method, type Project, type SupportRequest, type TransactionDispute, type Tx, type User } from './lib/types'
+import { DUAL_APPROVAL_THRESHOLD, type DisputeReason, type KycDocuments, type Method, type NewProject, type Project, type SupportRequest, type TransactionDispute, type Tx, type User } from './lib/types'
 import { MINIMUM_DEPOSIT, MINIMUM_WITHDRAWAL } from './lib/settings'
 import { today, uid } from './lib/format'
 
@@ -266,6 +266,34 @@ export const support = {
 export const admin = {
   setActor(actor: string) {
     set({ adminActor: actor })
+  },
+  async createProject(input: NewProject) {
+    await wait()
+    requireAdmin()
+    const name = input.name.trim()
+    if (name.length < 3) throw new ApiError('Project name must be at least 3 characters.')
+    if (get().projects.some((project) => project.name.toLowerCase() === name.toLowerCase()))
+      throw new ApiError('A project with this name already exists.')
+    if (!Number.isFinite(input.minInvest) || input.minInvest <= 0)
+      throw new ApiError('Minimum investment must be a positive amount.')
+    if (![input.category, input.icon, input.term, input.targetReturn, input.goal, input.fees, input.exit, input.description].every((value) => value.trim()))
+      throw new ApiError('Complete all required project details.')
+    const risks = input.risks.map((risk) => ({ title: risk.title.trim(), text: risk.text.trim() }))
+    if (risks.length === 0 || risks.some((risk) => !risk.title || !risk.text))
+      throw new ApiError('Add at least one risk with a title and description, and complete every risk.')
+
+    const project: Project = {
+      ...input,
+      id: uid('P'),
+      name,
+      risks,
+      raisedPct: 0,
+      status: 'Draft',
+      lastValuation: 'Not yet valued',
+    }
+    set((state) => ({ projects: [project, ...state.projects] }))
+    log(`Created project: ${name}`, 'Created as draft')
+    return project
   },
   getKycDocuments(id: string): KycDocuments | undefined {
     requireAdmin()
