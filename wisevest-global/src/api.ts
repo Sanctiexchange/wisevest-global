@@ -3,6 +3,8 @@ import { DEMO_USER_ID, seedInvestments, seedTxs } from './lib/seed'
 import { DUAL_APPROVAL_THRESHOLD, type DisputeReason, type KycDocuments, type Method, type NewProject, type Project, type SupportRequest, type TransactionDispute, type Tx, type User } from './lib/types'
 import { MINIMUM_DEPOSIT, MINIMUM_WITHDRAWAL } from './lib/settings'
 import { today, uid } from './lib/format'
+import { isSupabaseConfigured, supabase, type ProjectRow } from './lib/supabase'
+import type { Session } from '@supabase/supabase-js'
 
 export class ApiError extends Error {}
 
@@ -37,6 +39,76 @@ function requireAdmin() {
   const u = requireUser()
   if (u.role !== 'admin') throw new ApiError('Admin access required.')
 }
+function requireMockMode() {
+  if (isSupabaseConfigured) throw new ApiError('This workflow is not connected to the backend yet.')
+}
+function projectFromRow(row: ProjectRow): Project {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    icon: row.icon,
+    risk: row.risk,
+    minInvest: Number(row.min_invest),
+    term: row.term,
+    targetReturn: row.target_return,
+    raisedPct: Number(row.raised_pct),
+    goal: row.goal,
+    fees: row.fees,
+    exit: row.exit_terms,
+    description: row.description,
+    risks: row.risks,
+    status: row.status,
+    lastValuation: row.last_valuation,
+  }
+}
+function setBackendUser(session: Session) {
+  const metadata = session.user.user_metadata
+  const user: User = {
+    id: session.user.id,
+    name: typeof metadata.full_name === 'string' ? metadata.full_name : '',
+    email: session.user.email ?? '',
+    role: 'client',
+    kyc: 'not_started',
+    twoFa: false,
+  }
+  set({
+    user,
+    users: [user],
+    credentials: [],
+    cash: 0,
+    balances: { [user.id]: 0 },
+    investments: [],
+    txs: [],
+    kycDocuments: {},
+    kycCases: [],
+    deposits: [],
+    withdrawals: [],
+    disputes: [],
+    supportRequests: [],
+    authError: null,
+    authReady: true,
+  })
+}
+function clearBackendUser() {
+  set({
+    user: null,
+    users: [],
+    credentials: [],
+    cash: 0,
+    balances: {},
+    investments: [],
+    txs: [],
+    kycDocuments: {},
+    kycCases: [],
+    deposits: [],
+    withdrawals: [],
+    disputes: [],
+    supportRequests: [],
+    authReady: true,
+    authError: null,
+  })
+}
 function getBalance(userId: string) {
   const s = get()
   return s.balances[userId] ?? (s.user?.id === userId ? s.cash : 0)
@@ -47,6 +119,7 @@ function patchTx(id: string | undefined, patch: Partial<Tx>) {
 }
 
 async function updateTwoFactor(enabled: boolean) {
+  requireMockMode()
   await wait()
   const user = requireUser()
   set((s) => ({
@@ -57,10 +130,51 @@ async function updateTwoFactor(enabled: boolean) {
 
 /* ---------------- Session ---------------- */
 export const auth = {
+  initialize() {
+    if (!supabase) return () => {}
+    let active = true
+    let receivedAuthEvent = false
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return
+      receivedAuthEvent = true
+      if (session) setBackendUser(session)
+      else clearBackendUser()
+    })
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!active || receivedAuthEvent) return
+      if (error) {
+        clearBackendUser()
+        set({ authError: error.message })
+        return
+      }
+      if (data.session) setBackendUser(data.session)
+      else clearBackendUser()
+    }).catch((error: unknown) => {
+      if (active && !receivedAuthEvent) {
+        clearBackendUser()
+        set({ authError: error instanceof Error ? error.message : 'Could not restore the sign-in session.' })
+      }
+    })
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  },
   async register(email: string, name: string, password: string) {
     await wait()
     const emailKey = normalizeEmail(email)
     const fullName = name.trim().replace(/\s+/g, ' ')
+    if (supabase) {
+      const { data, error } = await supabase.auth.signUp({
+        email: emailKey,
+        password,
+        options: { data: { full_name: fullName } },
+      })
+      if (error) throw new ApiError(error.message)
+      if (!data.session) return null
+      setBackendUser(data.session)
+      return get().user
+    }
     const fullNameKey = normalizeFullName(fullName)
     const users = get().users
     if (users.some((x) => normalizeEmail(x.email) === emailKey))
@@ -82,6 +196,13 @@ export const auth = {
   async login(email: string, password: string) {
     await wait()
     const emailKey = normalizeEmail(email)
+    if (supabase) {
+      const { data, error } = await supabase.auth.signInWithPassword({ email: emailKey, password })
+      if (error) throw new ApiError(error.message)
+      if (!data.session) throw new ApiError('Sign-in did not return an active session.')
+      setBackendUser(data.session)
+      return get().user!
+    }
     const c = get().credentials.find((x) => normalizeEmail(x.email) === emailKey)
     if (!c || c.password !== password)
       throw new ApiError('Email or password is incorrect. Use a demo account below, or register first.')
@@ -100,6 +221,7 @@ export const auth = {
   },
   async loginDemo(role: 'client' | 'admin') {
     await wait(120)
+    requireMockMode()
     if (role === 'admin') {
       set({ user: { id: 'U-ADMIN', name: 'Compliance Officer', email: 'admin@wisevest.example', role: 'admin', kyc: 'approved', twoFa: true }, cash: 0 })
     } else {
@@ -117,7 +239,13 @@ export const auth = {
       }))
     }
   },
-  logout() {
+  async logout() {
+    if (supabase) {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw new ApiError(error.message)
+      clearBackendUser()
+      return
+    }
     set({ user: null, cash: 0 })
   },
   async enable2fa() {
@@ -128,6 +256,7 @@ export const auth = {
   },
   async changePassword(currentPassword: string, newPassword: string) {
     await wait()
+    requireMockMode()
     const user = requireUser()
     const credential = get().credentials.find((item) => normalizeEmail(item.email) === normalizeEmail(user.email))
     if (!credential) throw new ApiError('Password changes are unavailable for demo accounts.')
@@ -153,6 +282,7 @@ export const auth = {
 export const kyc = {
   async submit(data: { name: string; country: string; docType: string; identityDocument: File; selfie: File }) {
     await wait(400)
+    requireMockMode()
     const u = requireUser()
     if (!data.identityDocument || !data.selfie) throw new ApiError('Upload your identity document and selfie.')
     const name = data.name.trim().replace(/\s+/g, ' ')
@@ -176,6 +306,7 @@ export const kyc = {
 export const wallet = {
   async logDispute(transactionId: string, reason: DisputeReason, description: string) {
     await wait()
+    requireMockMode()
     requireUser()
     if (!get().txs.some((transaction) => transaction.id === transactionId))
       throw new ApiError('Transaction not found.')
@@ -196,6 +327,7 @@ export const wallet = {
   },
   async deposit(method: Method, amount: number) {
     await wait()
+    requireMockMode()
     const u = requireApproved()
     if (!(amount >= MINIMUM_DEPOSIT)) throw new ApiError(`Minimum deposit is $${MINIMUM_DEPOSIT}.`)
     const tx: Tx = { id: uid('T'), date: today(), type: 'Deposit', detail: method, amount, status: 'Pending' }
@@ -207,6 +339,7 @@ export const wallet = {
   },
   async withdraw(method: Method, amount: number, destination: string, code: string) {
     await wait()
+    requireMockMode()
     const u = requireApproved()
     if (!u.twoFa) throw new ApiError('Turn on two-factor authentication before you withdraw.')
     if (!/^\d{6}$/.test(code)) throw new ApiError('Enter your 6-digit authenticator code.')
@@ -224,6 +357,7 @@ export const wallet = {
   },
   async invest(projectId: string, amount: number) {
     await wait(350)
+    requireMockMode()
     requireApproved()
     const p = get().projects.find((x) => x.id === projectId)
     if (!p) throw new ApiError('Project not found.')
@@ -247,6 +381,7 @@ export const wallet = {
 export const support = {
   async createRequest(topic: string, message: string) {
     await wait()
+    requireMockMode()
     const user = requireUser()
     if (!topic.trim()) throw new ApiError('Choose a support topic.')
     if (message.trim().length < 10) throw new ApiError('Please describe your issue in at least 10 characters.')
@@ -269,6 +404,7 @@ export const admin = {
   },
   async createProject(input: NewProject) {
     await wait()
+    requireMockMode()
     requireAdmin()
     const name = input.name.trim()
     if (name.length < 3) throw new ApiError('Project name must be at least 3 characters.')
@@ -296,12 +432,14 @@ export const admin = {
     return project
   },
   getKycDocuments(id: string): KycDocuments | undefined {
+    requireMockMode()
     requireAdmin()
     if (!get().kycCases.some((x) => x.id === id)) throw new ApiError('Case not found.')
     return get().kycDocuments[id]
   },
   async reviewKyc(id: string, decision: 'approved' | 'rejected', reason = '') {
     await wait()
+    requireMockMode()
     requireAdmin()
     const k = get().kycCases.find((x) => x.id === id)
     if (!k) throw new ApiError('Case not found.')
@@ -318,11 +456,13 @@ export const admin = {
   },
   async advanceConfirmation(id: string) {
     await wait(120)
+    requireMockMode()
     requireAdmin()
     set((s) => ({ deposits: s.deposits.map((d) => (d.id === id && d.confirmations < d.needed ? { ...d, confirmations: d.confirmations + 1 } : d)) }))
   },
   async creditDeposit(id: string) {
     await wait()
+    requireMockMode()
     requireAdmin()
     const d = get().deposits.find((x) => x.id === id)
     if (!d) throw new ApiError('Deposit not found.')
@@ -342,6 +482,7 @@ export const admin = {
   },
   async reviewWithdrawal(id: string, decision: 'approve' | 'reject', reason = '') {
     await wait()
+    requireMockMode()
     requireAdmin()
     const w = get().withdrawals.find((x) => x.id === id)
     const actor = get().adminActor
@@ -371,6 +512,7 @@ export const admin = {
   },
   async setProjectStatus(id: string, status: Project['status']) {
     await wait(120)
+    requireMockMode()
     requireAdmin()
     const p = get().projects.find((x) => x.id === id)
     set((s) => ({ projects: s.projects.map((x) => (x.id === id ? { ...x, status } : x)) }))
@@ -378,6 +520,7 @@ export const admin = {
   },
   async postValuation(id: string, pct: number, note: string) {
     await wait()
+    requireMockMode()
     requireAdmin()
     if (!Number.isFinite(pct) || Math.abs(pct) > 100) throw new ApiError('Enter a percentage between −100 and 100.')
     if (note.trim().length < 10) throw new ApiError('Add the source of this valuation (at least 10 characters).')
@@ -390,6 +533,31 @@ export const admin = {
   },
 }
 
+export const publicProjects = {
+  async list() {
+    if (!supabase) return get().projects
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .in('status', ['Open', 'Funded'])
+      .order('name')
+    if (error) throw new ApiError(`Could not load projects: ${error.message}`)
+    return data.map(projectFromRow)
+  },
+  async getById(id: string) {
+    if (!supabase) return get().projects.find((project) => project.id === id) ?? null
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', id)
+      .in('status', ['Open', 'Funded'])
+      .maybeSingle()
+    if (error) throw new ApiError(`Could not load this project: ${error.message}`)
+    return data ? projectFromRow(data) : null
+  },
+}
+
 export const resetDemo = () => {
+  requireMockMode()
   useStore.getState().reset()
 }

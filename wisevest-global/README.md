@@ -2,7 +2,7 @@
 
 WiseVest Global is a React + TypeScript front-end prototype for a digital investment platform that combines a public investor-facing experience with internal compliance and operations workflows. The app models a simplified fintech investment flow, including onboarding, KYC review, project investing, deposits, withdrawals, and an admin operations dashboard.
 
-This repository is built as a working demo and a product blueprint. It is designed to demonstrate how a regulated investment platform could behave from a UX and workflow standpoint, while keeping business rules explicit and easy to replace with a real backend later.
+This repository is built as a working demo and product blueprint. Supabase now provides the initial authentication and public project-listing backend; remaining product workflows are still simulated.
 
 ## Product overview
 
@@ -38,7 +38,8 @@ It also supports admin users who can:
 - Search and filters for transaction and audit tables; exports respect active filters
 - Admin console for operations and compliance review
 - Admin project creation with required risk disclosures; new projects remain drafts until explicitly opened
-- Persistent mock data layer using Zustand to simulate a database
+- Supabase-backed account authentication and public project listings when configured
+- Persistent mock data layer using Zustand for the remaining demo workflows
 - Responsive UI built with Tailwind CSS
 
 ## Tech stack
@@ -49,6 +50,7 @@ It also supports admin users who can:
 - React Router
 - Tailwind CSS
 - Zustand
+- Supabase Auth and Postgres (initial backend foundation)
 
 ## Architecture
 
@@ -59,8 +61,10 @@ The app uses a simplified mock architecture intended to mirror a real fintech pr
 - `src/components/` contains shared layout, chart, and UI primitives
 - `src/lib/settings.ts` defines the account settings tabs and demo transaction/notification configuration
 - Admin project creation validates required offering details and disclosures before adding a draft to the mock store
-- `src/api.ts` contains the mocked business logic and rules
+- `src/api.ts` contains the client API layer, including the Supabase-backed auth and project reads
 - `src/store.ts` holds the persisted mock data store
+- `src/lib/supabase.ts` configures the optional Supabase client and database types
+- `supabase/migrations/` contains the initial profile/project schema, row-level security policies, and example projects
 
 ## Project structure
 
@@ -72,13 +76,17 @@ wisevest-global/
 │   ├── index.css
 │   ├── main.tsx
 │   ├── store.ts
+│   ├── lib/
+│   │   ├── format.ts
+│   │   ├── seed.ts
+│   │   ├── settings.ts
+│   │   ├── supabase.ts
+│   │   └── types.ts
 │   ├── components/
 │   │   ├── charts.tsx
 │   │   ├── layouts.tsx
 │   │   ├── SupportModal.tsx
 │   │   └── ui.tsx
-│   ├── lib/
-│   │   └── settings.ts
 │   └── pages/
 │       ├── Admin.tsx
 │       ├── Auth.tsx
@@ -87,6 +95,8 @@ wisevest-global/
 │       ├── Projects.tsx
 │       └── Settings.tsx
 ├── index.html
+├── supabase/
+│   └── migrations/
 ├── package.json
 ├── package-lock.json
 ├── postcss.config.js
@@ -109,6 +119,16 @@ wisevest-global/
 ```bash
 npm install
 ```
+
+### Configure Supabase
+
+1. Create a Supabase project.
+2. In the Supabase SQL Editor, run `supabase/migrations/20261113150000_backend_foundation.sql`.
+3. Copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from the project API settings. The browser key is public; never put a service-role key in a `VITE_` variable.
+4. In Supabase Auth settings, configure the site URL and redirect URLs for your local and deployed app.
+5. Restart the Vite server after changing environment variables.
+
+With both environment variables set, registration and sign-in use Supabase Auth and the public projects pages query the `projects` table. Without them, the existing browser demo remains available. The migration inserts example project listings; replace these with reviewed, accurate offering information before use.
 
 ### Run locally
 
@@ -139,7 +159,7 @@ Use the demo paths in the UI to explore the investor and compliance workflows wi
 
 ## Business rules modeled in the app
 
-The mock backend in `src/api.ts` enforces key product rules such as:
+The demo backend in `src/api.ts` enforces key product rules such as:
 
 - Deposits, investments, and withdrawals are blocked until KYC is approved
 - KYC approval requires a clean sanctions result and a face match above threshold
@@ -153,7 +173,7 @@ These rules are intentionally documented in a way that makes it easy to move the
 
 ## Important note
 
-This project is a front-end prototype and mock business layer. It is not yet production-ready finance software. It demonstrates the user experience and workflow logic, but real deployment would require:
+This project remains a prototype and is not production-ready finance software. The initial Supabase integration covers account authentication and public project reads only. Wallet balances, KYC, investments, deposits, withdrawals, support and admin operations are still mock workflows and are blocked when Supabase is configured. Real deployment would also require:
 
 - secure authentication and identity verification
 - real document and sanctions checks
@@ -164,13 +184,12 @@ This project is a front-end prototype and mock business layer. It is not yet pro
 
 ## Suggested next steps
 
-1. Connect the UI to a real API and database
-2. Replace the Zustand mock store with server-driven state management
-3. Add authentication, authorization, and role-based access control
-4. Integrate KYC/AML and sanctions providers
-5. Add bank deposit and payout integrations
-6. Harden security, accessibility, and audit controls
-7. Prepare product documentation and regulatory review materials
+1. Replace the remaining Zustand mock workflows with server-side, transaction-safe APIs
+2. Add verified role-based authorization and audited admin operations
+3. Integrate KYC/AML and sanctions providers
+4. Add approved custody, banking and payout integrations
+5. Harden security, accessibility, and audit controls
+6. Prepare product documentation and regulatory review materials
 
 ## License
 

@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useStore } from '../store'
-import { wallet, ApiError } from '../api'
+import { publicProjects, wallet, ApiError } from '../api'
 import { money, parseAmount } from '../lib/format'
 import type { Project } from '../lib/types'
 import { Button, Check, Field, Modal, Progress, RiskNotice, Tag, cx, riskTone, useToast } from '../components/ui'
+import { isSupabaseConfigured } from '../lib/supabase'
 
 const filters = ['All', 'Bitcoin', 'Energy', 'Real estate'] as const
 
@@ -26,19 +27,42 @@ export function ProjectCard({ p }: { p: Project }) {
 export function ProjectsPage() {
   const projects = useStore((s) => s.projects)
   const [params, setParams] = useSearchParams()
+  const [loading, setLoading] = useState(isSupabaseConfigured)
+  const [loadError, setLoadError] = useState('')
   const cat = params.get('category') ?? 'All'
   const list = projects.filter((p) => p.status !== 'Draft' && (cat === 'All' || p.category === cat))
+  const load = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      useStore.setState({ projects: await publicProjects.list() })
+    } catch (issue) {
+      setLoadError(issue instanceof ApiError ? issue.message : 'Could not load projects.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+  useEffect(() => {
+    if (isSupabaseConfigured) void load()
+  }, [load])
+
   return (
     <div className="mx-auto max-w-[1100px] px-5 pb-20 pt-10">
       <h1 className="text-[clamp(1.9rem,5vw,2.8rem)] font-bold">Choose your <span className="grad-text">next project.</span></h1>
       <p className="mt-2 text-muted">Every project lists its documents, risks, fees and exit terms before you invest.</p>
+      {isSupabaseConfigured && <p className="mt-4 rounded-xl border border-amber/30 bg-amber/10 p-3 text-sm text-amber">These are example project listings from the initial database migration. Verify and replace all offering information before use.</p>}
       <div className="my-6 flex flex-wrap gap-2" role="tablist">
         {filters.map((f) => (
           <button key={f} role="tab" aria-selected={cat === f} onClick={() => setParams(f === 'All' ? {} : { category: f })}
             className={cx('rounded-full border px-5 py-2 text-sm font-medium', cat === f ? 'border-neon text-ink ring-1 ring-neon' : 'border-line text-muted')}>{f}</button>
         ))}
       </div>
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{list.map((p) => <ProjectCard key={p.id} p={p} />)}</div>
+      {loading ? <p role="status" className="py-12 text-center text-muted">Loading projects…</p> : loadError ? (
+        <div className="rounded-xl border border-danger/30 bg-danger/5 p-4 text-sm" role="alert">
+          <p>{loadError}</p>
+          <Button variant="ghost" className="mt-3 !px-4 !py-2" onClick={() => void load()}>Try again</Button>
+        </div>
+      ) : <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{list.map((p) => <ProjectCard key={p.id} p={p} />)}</div>}
       <RiskNotice className="mt-8" />
     </div>
   )
@@ -66,18 +90,40 @@ function Scenarios({ amount }: { amount: number }) {
 export function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const project = useStore((s) => s.projects.find((p) => p.id === id))
+  const storedProject = useStore((s) => s.projects.find((p) => p.id === id))
+  const [backendProject, setBackendProject] = useState<Project | null>(null)
+  const [loading, setLoading] = useState(isSupabaseConfigured)
+  const [loadError, setLoadError] = useState('')
   const user = useStore((s) => s.user)
   const cash = useStore((s) => s.cash)
   const [tab, setTab] = useState<(typeof TABS)[number]>('Overview')
   const [amount, setAmount] = useState('')
   const [err, setErr] = useState('')
   const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!isSupabaseConfigured || !id) return
+    let active = true
+    setLoading(true)
+    setLoadError('')
+    void publicProjects.getById(id).then((project) => {
+      if (active) setBackendProject(project)
+    }).catch((issue: unknown) => {
+      if (active) setLoadError(issue instanceof ApiError ? issue.message : 'Could not load this project.')
+    }).finally(() => {
+      if (active) setLoading(false)
+    })
+    return () => { active = false }
+  }, [id])
+
+  const project = isSupabaseConfigured ? backendProject : storedProject
+  if (loading) return <div className="mx-auto max-w-[1100px] px-5 py-20 text-muted" role="status">Loading project…</div>
+  if (loadError) return <div className="mx-auto max-w-[1100px] px-5 py-20" role="alert">{loadError} <Link className="text-neon" to="/projects">Back to projects</Link></div>
   if (!project) return <div className="mx-auto max-w-[1100px] px-5 py-20">Project not found. <Link className="text-neon" to="/projects">Back to projects</Link></div>
   const p = project
   const amt = parseAmount(amount || String(p.minInvest))
 
   const start = () => {
+    if (isSupabaseConfigured) return setErr('Investments are not connected to the backend yet.')
     if (!user) return navigate('/login')
     if (user.role !== 'client') return setErr('Sign in with an investor account to invest.')
     if (user.kyc !== 'approved') return setErr('Complete identity verification before you invest.')

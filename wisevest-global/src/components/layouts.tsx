@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Link, NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom'
-import { Logo, RiskNotice, cx } from './ui'
+import { Logo, RiskNotice, cx, useToast } from './ui'
 import { useStore } from '../store'
-import { admin, auth, resetDemo } from '../api'
+import { admin, auth, resetDemo, ApiError } from '../api'
 import { ADMIN_ACTORS } from '../lib/types'
 import SupportModal from './SupportModal'
+import { isSupabaseConfigured } from '../lib/supabase'
 
 export function PublicLayout() {
   const user = useStore((s) => s.user)
@@ -40,8 +41,16 @@ type Item = { to: string; label: string; icon: string; end?: boolean }
 
 function Shell({ items, role, children, extra }: { items: Item[]; role: string; children: React.ReactNode; extra?: React.ReactNode }) {
   const navigate = useNavigate()
+  const toast = useToast()
   const user = useStore((s) => s.user)
-  const out = () => { auth.logout(); navigate('/') }
+  const out = async () => {
+    try {
+      await auth.logout()
+      navigate('/')
+    } catch (issue) {
+      toast(issue instanceof ApiError ? issue.message : 'Could not sign out.')
+    }
+  }
   return (
     <>
     <div className="grid min-h-screen md:grid-cols-[240px_1fr]">
@@ -78,6 +87,8 @@ function Shell({ items, role, children, extra }: { items: Item[]; role: string; 
 
 export function ClientLayout() {
   const user = useStore((s) => s.user)
+  const authReady = useStore((s) => s.authReady)
+  if (isSupabaseConfigured && !authReady) return <div className="grid min-h-screen place-items-center text-muted" role="status">Restoring sign-in session…</div>
   if (!user) return <Navigate to="/login" replace />
   if (user.role !== 'client') return <Navigate to="/admin" replace />
   const items: Item[] = [
@@ -89,7 +100,11 @@ export function ClientLayout() {
     { to: '/app/settings', label: 'Settings', icon: '⚙' },
   ]
   const banner =
-    user.kyc === 'approved' ? null : (
+    isSupabaseConfigured ? (
+      <div className="mb-5 rounded-xl border border-amber/30 bg-amber/10 p-4 text-sm text-amber">
+        Only account authentication and public project listings are connected. KYC, balances, deposits, investments, withdrawals and support are not available in this backend milestone.
+      </div>
+    ) : user.kyc === 'approved' ? null : (
       <div className="mb-5 rounded-xl border border-amber/30 bg-amber/10 p-4 text-sm text-amber">
         {user.kyc === 'not_started' && <>Verify your identity to deposit, invest and withdraw. <Link className="underline" to="/register">Start verification</Link></>}
         {user.kyc === 'under_review' && <>Your verification is under review. Deposits, investing and withdrawals unlock once it is approved. (Demo: approve it from the admin console.)</>}
@@ -106,8 +121,11 @@ export function ClientLayout() {
 
 export function AdminLayout() {
   const navigate = useNavigate()
+  const toast = useToast()
   const user = useStore((s) => s.user)
+  const authReady = useStore((s) => s.authReady)
   const actor = useStore((s) => s.adminActor)
+  if (isSupabaseConfigured && !authReady) return <div className="grid min-h-screen place-items-center text-muted" role="status">Restoring sign-in session…</div>
   if (!user) return <Navigate to="/login" replace />
   if (user.role !== 'admin') {
     return (
@@ -118,7 +136,14 @@ export function AdminLayout() {
           <button
             type="button"
             className="mt-5 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-[#05050a] shadow-glow"
-            onClick={() => { auth.logout(); navigate('/login') }}
+            onClick={async () => {
+              try {
+                await auth.logout()
+                navigate('/login')
+              } catch (issue) {
+                toast(issue instanceof ApiError ? issue.message : 'Could not sign out.')
+              }
+            }}
           >
             Sign out and continue
           </button>

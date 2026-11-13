@@ -8,6 +8,7 @@ import type { DisputeReason, Method, Tx } from '../lib/types'
 import { MINIMUM_DEPOSIT } from '../lib/settings'
 import { Button, Empty, Field, Modal, PageTitle, Progress, RiskNotice, Segmented, Tag, cx, riskTone, useToast } from '../components/ui'
 import { Donut, LineChart } from '../components/charts'
+import { isSupabaseConfigured } from '../lib/supabase'
 
 const catColor: Record<string, string> = { Bitcoin: '#0F3D33', Energy: '#BBEC04', 'Real estate': '#82978E' }
 
@@ -106,6 +107,15 @@ const ADDR: Record<Method, string> = {
   Bank: 'Account name: WiseVest Global Ltd\nBank and account number: shown here once configured\nReference: WV-DEMO-1042',
 }
 
+function BackendUnavailable({ title }: { title: string }) {
+  return (
+    <div className="card mx-auto w-full max-w-[560px]">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      <p className="mt-3 text-sm text-muted">This feature is not connected to the backend yet. No funds or financial activity can be processed here.</p>
+    </div>
+  )
+}
+
 export function Deposit() {
   const navigate = useNavigate()
   const toast = useToast()
@@ -127,6 +137,7 @@ export function Deposit() {
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Something went wrong.') }
     finally { setBusy(false) }
   }
+  if (isSupabaseConfigured) return <BackendUnavailable title="Deposits are not available yet" />
   return (
     <div className="card mx-auto w-full max-w-[560px]">
       <Link to="/app" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-muted transition hover:text-neon">
@@ -167,6 +178,7 @@ export function Withdraw() {
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Something went wrong.') }
     finally { setBusy(false) }
   }
+  if (isSupabaseConfigured) return <BackendUnavailable title="Withdrawals are not available yet" />
   return (
     <div className="card mx-auto w-full max-w-[560px]">
       <Link to="/app" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-muted transition hover:text-neon">

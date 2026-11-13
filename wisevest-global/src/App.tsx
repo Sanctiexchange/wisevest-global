@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AdminLayout, ClientLayout, PublicLayout } from './components/layouts'
 import Landing from './pages/Landing'
@@ -6,8 +7,11 @@ import { ProjectDetail, ProjectsPage } from './pages/Projects'
 import { Dashboard, Deposit, Investments, Transactions, Withdraw } from './pages/Client'
 import { AdminAudit, AdminDeposits, AdminKyc, AdminOverview, AdminProjects, AdminWithdrawals } from './pages/Admin'
 import Settings from './pages/Settings'
+import { auth } from './api'
 
 export default function App() {
+  useEffect(() => auth.initialize(), [])
+
   return (
     <Routes>
       <Route element={<PublicLayout />}>

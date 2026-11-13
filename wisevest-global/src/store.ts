@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import type { AuditEntry, Deposit, Investment, KycCase, KycDocuments, Project, SupportRequest, TransactionDispute, Tx, User, Withdrawal } from './lib/types'
 import { DEMO_USER_ID, seedDeposits, seedKyc, seedProjects, seedUsers, seedWithdrawals } from './lib/seed'
 import { DEFAULT_NOTIFICATION_PREFERENCES } from './lib/settings'
+import { isSupabaseConfigured } from './lib/supabase'
 
 /**
  * Mock database. In production this state lives on the server; the UI only ever
@@ -26,6 +27,8 @@ export interface DB {
   notificationPreferences: Record<string, boolean>
   disputes: TransactionDispute[]
   supportRequests: SupportRequest[]
+  authError: string | null
+  authReady: boolean
 }
 
 const initial = (): DB => ({
@@ -46,6 +49,8 @@ const initial = (): DB => ({
   notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
   disputes: [],
   supportRequests: [],
+  authError: null,
+  authReady: !isSupabaseConfigured,
 })
 
 export const useStore = create<DB & { reset: () => void }>()(
@@ -57,7 +62,7 @@ export const useStore = create<DB & { reset: () => void }>()(
     {
       name: 'wisevest-mock-db-v1',
       version: 5,
-      partialize: (state) => ({ ...state, kycDocuments: {} }),
+      partialize: (state) => ({ ...state, kycDocuments: {}, authError: null, authReady: !isSupabaseConfigured }),
       migrate: (persistedState, version) => {
         const previous = persistedState as Partial<DB> & {
           credentials?: DB['credentials'] | { email: string; password: string } | null
