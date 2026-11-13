@@ -4,6 +4,7 @@ import { auth, kyc, ApiError } from '../api'
 import { useStore } from '../store'
 import { Button, Check, Field, Logo, useToast } from '../components/ui'
 import { cx } from '../components/ui'
+import { isSupabaseConfigured } from '../lib/supabase'
 
 function Frame({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
   return (
@@ -19,15 +20,16 @@ function Frame({ children, wide }: { children: React.ReactNode; wide?: boolean }
 export function Login() {
   const navigate = useNavigate()
   const user = useStore((s) => s.user)
+  const authError = useStore((s) => s.authError)
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  if (user) return <Navigate to={user.role === 'admin' ? '/admin' : '/app'} replace />
+  if (user) return <Navigate to={user.role !== 'client' ? '/admin' : '/app'} replace />
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setBusy(true); setErr('')
-    try { const u = await auth.login(email, pw); navigate(u.role === 'admin' ? '/admin' : '/app') }
+    try { const u = await auth.login(email, pw); navigate(u.role !== 'client' ? '/admin' : '/app') }
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Something went wrong.') }
     finally { setBusy(false) }
   }
@@ -35,17 +37,18 @@ export function Login() {
   return (
     <Frame>
       <h1 className="text-2xl font-bold">Sign in</h1>
+      {authError && <p className="err" role="alert">{authError}</p>}
       <form onSubmit={submit} noValidate>
         <Field label="Email address" htmlFor="e"><input id="e" type="email" autoComplete="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
         <Field label="Password" htmlFor="p" error={err}><input id="p" type="password" autoComplete="current-password" className="input" value={pw} onChange={(e) => setPw(e.target.value)} /></Field>
         <Button type="submit" block loading={busy}>Sign in</Button>
       </form>
       <p className="mt-4 text-center text-sm text-muted">New here? <Link to="/register" className="text-neon">Create an account</Link></p>
-      <div className="mt-6 space-y-2 border-t border-line pt-5">
+      {!isSupabaseConfigured && <div className="mt-6 space-y-2 border-t border-line pt-5">
         <p className="fine text-center">Demo accounts (mock data, nothing is sent anywhere)</p>
         <Button variant="ghost" block onClick={() => demo('client')}>Continue as demo investor</Button>
         <Button variant="ghost" className="!mt-2 w-full" onClick={() => demo('admin')}>Continue as demo admin</Button>
-      </div>
+      </div>}
     </Frame>
   )
 }
@@ -79,6 +82,78 @@ const countries = ['Nigeria', 'Ghana', 'Kenya', 'South Africa', 'United Kingdom'
 const labels = ['Create account', 'Verify email', 'Personal details', 'ID document', 'Selfie check', 'Review and submit']
 
 export function Register() {
+  return isSupabaseConfigured ? <SupabaseRegister /> : <DemoRegister />
+}
+
+function SupabaseRegister() {
+  const navigate = useNavigate()
+  const user = useStore((state) => state.user)
+  const authReady = useStore((state) => state.authReady)
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  if (!authReady) return <Frame><p className="text-sm text-muted" role="status">Restoring sign-in session…</p></Frame>
+  if (user) return <Navigate to={user.role !== 'client' ? '/admin' : '/app'} replace />
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setError('')
+    setMessage('')
+    if (name.trim().length < 2) return setError('Enter your full name.')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) return setError('Enter a valid email address.')
+    if (password.length < 10 || pwScore(password) < 3) return setError('Use 10+ characters with a mix of letters, numbers and symbols.')
+    if (!acceptedTerms) return setError('Please accept to continue.')
+
+    setBusy(true)
+    try {
+      const user = await auth.register(email, name, password)
+      if (user) {
+        navigate('/app')
+        return
+      }
+      setMessage('Account created. Check your email to confirm your address, then sign in. Identity verification and investment features are not connected yet.')
+    } catch (issue) {
+      setError(issue instanceof ApiError ? issue.message : 'Could not create your account.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Frame>
+      <h1 className="text-2xl font-bold">Create your account</h1>
+      <p className="mb-4 mt-2 text-sm text-muted">Sign up with secure email authentication. Identity verification is a separate step and is not connected yet.</p>
+      {message ? (
+        <div className="rounded-xl border border-neon/30 bg-brand-soft p-4 text-sm" role="status">
+          <p>{message}</p>
+          <Button variant="ghost" block onClick={() => navigate('/login')}>Go to sign in</Button>
+        </div>
+      ) : (
+        <form onSubmit={submit} noValidate>
+          <Field label="Full legal name" htmlFor="full-name" error={error.startsWith('Enter your full name') ? error : ''}>
+            <input id="full-name" autoComplete="name" className="input" value={name} onChange={(event) => setName(event.target.value)} />
+          </Field>
+          <Field label="Email address" htmlFor="signup-email" error={error.startsWith('Enter a valid email') ? error : ''}>
+            <input id="signup-email" type="email" autoComplete="email" className="input" value={email} onChange={(event) => setEmail(event.target.value)} />
+          </Field>
+          <Field label="Password" htmlFor="signup-password" error={error.startsWith('Use 10+') ? error : ''}>
+            <input id="signup-password" type="password" autoComplete="new-password" className="input" value={password} onChange={(event) => setPassword(event.target.value)} />
+          </Field>
+          <Check checked={acceptedTerms} onChange={setAcceptedTerms}>I agree to the Terms of Service and Privacy Policy.</Check>
+          {error && <p className="err" role="alert">{error}</p>}
+          <Button type="submit" block loading={busy}>Create account</Button>
+        </form>
+      )}
+      <p className="mt-4 text-center text-sm text-muted">Already registered? <Link to="/login" className="text-neon">Sign in</Link></p>
+    </Frame>
+  )
+}
+
+function DemoRegister() {
   const navigate = useNavigate()
   const toast = useToast()
   const user = useStore((s) => s.user)
@@ -91,7 +166,7 @@ export function Register() {
   const [dec, setDec] = useState([false, false, false])
   const [errs, setErrs] = useState<Record<string, string>>({})
   const set = (k: keyof typeof f, v: string | boolean) => setF((p) => ({ ...p, [k]: v }))
-  if (user && user.role === 'admin') return <Navigate to="/admin" replace />
+  if (user && user.role !== 'client') return <Navigate to="/admin" replace />
 
   const validate = (): Record<string, string> => {
     const e: Record<string, string> = {}

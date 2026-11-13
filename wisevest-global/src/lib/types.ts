@@ -1,7 +1,7 @@
 export type Category = 'Bitcoin' | 'Energy' | 'Real estate'
 export type Method = 'BTC' | 'USDT' | 'USDC' | 'Bank'
 export type KycStatus = 'not_started' | 'under_review' | 'approved' | 'rejected'
-export type Role = 'client' | 'admin'
+export type Role = 'client' | 'admin' | 'super_admin'
 
 export interface User {
   id: string
@@ -10,6 +10,7 @@ export interface User {
   role: Role
   kyc: KycStatus
   twoFa: boolean
+  accountStatus?: 'active' | 'suspended'
 }
 
 export interface KycDocuments {
@@ -81,9 +82,11 @@ export interface KycCase {
   name: string
   country: string
   docType: string
-  faceMatch: number
-  sanctions: 'Clear' | 'Potential match'
   status: 'pending' | 'approved' | 'rejected'
+  faceMatch?: number
+  sanctions?: 'Clear' | 'Potential match'
+  reviewReason?: string
+  createdAt?: string
 }
 
 export interface Deposit {
@@ -91,9 +94,12 @@ export interface Deposit {
   userName: string
   amount: number
   method: Method
-  confirmations: number
-  needed: number
-  status: 'pending' | 'credited'
+  confirmations?: number
+  needed?: number
+  externalReference?: string
+  status: 'pending' | 'verified' | 'rejected' | 'credited'
+  reviewReason?: string
+  createdAt?: string
   userId?: string
   txId?: string
 }
@@ -104,10 +110,13 @@ export interface Withdrawal {
   userName: string
   amount: number
   method: Method
+  destination?: string
   kycVerified: boolean
   newAddress: boolean
   status: 'pending' | 'awaiting_second' | 'approved' | 'rejected'
   firstApprover?: string
+  reviewReason?: string
+  createdAt?: string
   txId?: string
 }
 

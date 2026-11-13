@@ -2,7 +2,7 @@
 
 WiseVest Global is a React + TypeScript front-end prototype for a digital investment platform that combines a public investor-facing experience with internal compliance and operations workflows. The app models a simplified fintech investment flow, including onboarding, KYC review, project investing, deposits, withdrawals, and an admin operations dashboard.
 
-This repository is built as a working demo and a product blueprint. It is designed to demonstrate how a regulated investment platform could behave from a UX and workflow standpoint, while keeping business rules explicit and easy to replace with a real backend later.
+This repository is a product prototype. Supabase can provide authentication, project listings, role-controlled admin operations, KYC document intake, and request-only deposit and withdrawal review. It does not process payments, hold funds, or execute payouts.
 
 ## Product overview
 
@@ -18,7 +18,7 @@ WiseVest Global helps investors:
 It also supports admin users who can:
 
 - Review and approve KYC submissions
-- Review and process deposit and withdrawal requests
+- Review deposit and withdrawal requests without moving funds
 - Manage flagged or rejected cases
 - Monitor project status and operational activity
 - Audit admin actions and decision history
@@ -38,7 +38,8 @@ It also supports admin users who can:
 - Search and filters for transaction and audit tables; exports respect active filters
 - Admin console for operations and compliance review
 - Admin project creation with required risk disclosures; new projects remain drafts until explicitly opened
-- Persistent mock data layer using Zustand to simulate a database
+- Supabase-backed authentication, projects, admin operations, KYC intake, and review-only financial requests when configured
+- Persistent mock data layer using Zustand for the remaining demo workflows
 - Responsive UI built with Tailwind CSS
 
 ## Tech stack
@@ -49,6 +50,7 @@ It also supports admin users who can:
 - React Router
 - Tailwind CSS
 - Zustand
+- Supabase Auth and Postgres (initial backend foundation)
 
 ## Architecture
 
@@ -59,8 +61,10 @@ The app uses a simplified mock architecture intended to mirror a real fintech pr
 - `src/components/` contains shared layout, chart, and UI primitives
 - `src/lib/settings.ts` defines the account settings tabs and demo transaction/notification configuration
 - Admin project creation validates required offering details and disclosures before adding a draft to the mock store
-- `src/api.ts` contains the mocked business logic and rules
+- `src/api.ts` contains the client API layer, including Supabase-backed user and admin operations
 - `src/store.ts` holds the persisted mock data store
+- `src/lib/supabase.ts` configures the optional Supabase client and database types
+- `supabase/migrations/` contains the profile/project foundation and the admin-console schema, row-level security policies, and RPCs
 
 ## Project structure
 
@@ -72,13 +76,17 @@ wisevest-global/
 │   ├── index.css
 │   ├── main.tsx
 │   ├── store.ts
+│   ├── lib/
+│   │   ├── format.ts
+│   │   ├── seed.ts
+│   │   ├── settings.ts
+│   │   ├── supabase.ts
+│   │   └── types.ts
 │   ├── components/
 │   │   ├── charts.tsx
 │   │   ├── layouts.tsx
 │   │   ├── SupportModal.tsx
 │   │   └── ui.tsx
-│   ├── lib/
-│   │   └── settings.ts
 │   └── pages/
 │       ├── Admin.tsx
 │       ├── Auth.tsx
@@ -87,6 +95,8 @@ wisevest-global/
 │       ├── Projects.tsx
 │       └── Settings.tsx
 ├── index.html
+├── supabase/
+│   └── migrations/
 ├── package.json
 ├── package-lock.json
 ├── postcss.config.js
@@ -109,6 +119,19 @@ wisevest-global/
 ```bash
 npm install
 ```
+
+### Configure Supabase
+
+1. Create a Supabase project.
+2. Apply both migrations in `supabase/migrations/` in filename order, using the Supabase CLI or SQL Editor.
+3. Copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from the project API settings. The browser key is public; never put a service-role key in a `VITE_` variable.
+4. In Supabase Auth settings, configure the site URL and redirect URLs for your local and deployed app.
+5. Restart the Vite server after changing environment variables.
+6. To provision a super-admin, the Supabase project owner must set `"role": "super_admin"` in that user's **app_metadata** in Supabase Auth. Never set roles in user-editable metadata. After the user's next sign-in, a super-admin can assign regular admin roles from the console.
+
+With both environment variables set, registration/sign-in use Supabase Auth and project/admin data use Postgres. Without them, the browser demo remains available. The foundation migration inserts example project listings; replace these with reviewed, accurate offering information before use.
+
+The second migration adds protected profile roles, KYC cases and a private document bucket, deposit/withdrawal request queues, project controls, and persistent audit events. KYC decisions are manual; no identity-match or sanctions provider is connected. Deposits marked verified and withdrawals marked approved are only reviewed/authorized requests, not completed payments or payouts. Withdrawals require approved KYC and verified Supabase TOTP; requests over $10,000 require a second, distinct admin approval. No wallet balances are stored or changed.
 
 ### Run locally
 
@@ -139,7 +162,7 @@ Use the demo paths in the UI to explore the investor and compliance workflows wi
 
 ## Business rules modeled in the app
 
-The mock backend in `src/api.ts` enforces key product rules such as:
+The demo backend in `src/api.ts` enforces key product rules such as:
 
 - Deposits, investments, and withdrawals are blocked until KYC is approved
 - KYC approval requires a clean sanctions result and a face match above threshold
@@ -153,7 +176,7 @@ These rules are intentionally documented in a way that makes it easy to move the
 
 ## Important note
 
-This project is a front-end prototype and mock business layer. It is not yet production-ready finance software. It demonstrates the user experience and workflow logic, but real deployment would require:
+This project remains a prototype and is not production-ready finance software. The app remains a prototype and is not production-ready finance software. Investment execution, custody, payment rails, real identity and sanctions checks, and support workflows are not integrated. Real deployment would also require:
 
 - secure authentication and identity verification
 - real document and sanctions checks
@@ -164,13 +187,12 @@ This project is a front-end prototype and mock business layer. It is not yet pro
 
 ## Suggested next steps
 
-1. Connect the UI to a real API and database
-2. Replace the Zustand mock store with server-driven state management
-3. Add authentication, authorization, and role-based access control
-4. Integrate KYC/AML and sanctions providers
-5. Add bank deposit and payout integrations
-6. Harden security, accessibility, and audit controls
-7. Prepare product documentation and regulatory review materials
+1. Replace the remaining Zustand mock workflows with server-side, transaction-safe APIs
+2. Add verified role-based authorization and audited admin operations
+3. Integrate KYC/AML and sanctions providers
+4. Add approved custody, banking and payout integrations
+5. Harden security, accessibility, and audit controls
+6. Prepare product documentation and regulatory review materials
 
 ## License
 
