@@ -68,7 +68,7 @@ function setBackendUser(session: Session) {
     id: session.user.id,
     name: typeof metadata.full_name === 'string' ? metadata.full_name : '',
     email: session.user.email ?? '',
-    role: 'client',
+    role: session.user.app_metadata?.role === 'admin' ? 'admin' : 'client',
     kyc: 'not_started',
     twoFa: false,
   }

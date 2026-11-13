@@ -127,8 +127,11 @@ npm install
 3. Copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from the project API settings. The browser key is public; never put a service-role key in a `VITE_` variable.
 4. In Supabase Auth settings, configure the site URL and redirect URLs for your local and deployed app.
 5. Restart the Vite server after changing environment variables.
+6. To allow an account to open the admin console, a project owner must set `"role": "admin"` in that user's **app_metadata** in Supabase Auth. Do not set this in user-editable metadata. The user must sign out and sign in again after the change.
 
 With both environment variables set, registration and sign-in use Supabase Auth and the public projects pages query the `projects` table. Without them, the existing browser demo remains available. The migration inserts example project listings; replace these with reviewed, accurate offering information before use.
+
+The trusted `app_metadata.role` claim only controls access to the admin UI. Admin workflows remain mock-only and are blocked when Supabase is configured; do not use the console for live KYC, deposits, withdrawals, project management, or audit operations.
 
 ### Run locally
 

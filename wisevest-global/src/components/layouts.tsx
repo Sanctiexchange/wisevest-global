@@ -1,4 +1,4 @@
-//.import { useState } from 'react'
+import { useState } from 'react'
 import { Link, NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { Logo, RiskNotice, cx, useToast } from './ui'
 import { useStore } from '../store'
@@ -9,7 +9,7 @@ import { isSupabaseConfigured } from '../lib/supabase'
 
 export function PublicLayout() {
   const user = useStore((s) => s.user)
-  // const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(false)
   const home = user ? (user.role === 'admin' ? '/admin' : '/app') : '/login'
   return (
     <div>
@@ -132,7 +132,11 @@ export function AdminLayout() {
       <div className="grid min-h-screen place-items-center px-5">
         <div className="card max-w-lg text-center">
           <h1 className="text-2xl font-bold">Admin access required</h1>
-          <p className="mt-2 text-sm text-muted">You’re signed in as an investor. Sign out, then choose “Continue as demo admin” on the sign-in page.</p>
+          <p className="mt-2 text-sm text-muted">
+            {isSupabaseConfigured
+              ? 'This account does not have the trusted admin role. Ask a project owner to set app_metadata.role to "admin" for this user in Supabase, then sign out and back in.'
+              : 'You’re signed in as an investor. Sign out, then choose “Continue as demo admin” on the sign-in page.'}
+          </p>
           <button
             type="button"
             className="mt-5 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-[#05050a] shadow-glow"
@@ -159,7 +163,7 @@ export function AdminLayout() {
     { to: '/admin/projects', label: 'Projects', icon: '◈' },
     { to: '/admin/audit', label: 'Audit', icon: '≡' },
   ]
-  const extra = (
+  const extra = !isSupabaseConfigured && (
     <div>
       <label className="mb-1 block text-xs text-white/80" htmlFor="actor">Acting as (demo of dual control)</label>
       <select id="actor" className="input !py-2 text-sm" value={actor} onChange={(e) => admin.setActor(e.target.value)}>
@@ -170,6 +174,11 @@ export function AdminLayout() {
   )
   return (
     <Shell items={items} role="Admin console" extra={extra}>
+      {isSupabaseConfigured && (
+        <div className="mb-5 rounded-xl border border-amber/30 bg-amber/10 p-4 text-sm text-amber" role="status">
+          Admin access is enabled, but this console still uses demo data. KYC, deposits, withdrawals, project administration, and audit actions are not connected to Supabase.
+        </div>
+      )}
       <div className="mb-4 md:hidden">
         <label className="mb-1 block text-xs text-muted" htmlFor="actor-m">Acting as</label>
         <select id="actor-m" className="input !py-2 text-sm" value={actor} onChange={(e) => admin.setActor(e.target.value)}>

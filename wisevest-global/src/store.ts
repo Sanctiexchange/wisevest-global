@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { AuditEntry, Deposit, Investment, KycCase, KycDocuments, Project, SupportRequest, TransactionDispute, Tx, User, Withdrawal } from './lib/types'
 import { DEMO_USER_ID, seedDeposits, seedKyc, seedProjects, seedUsers, seedWithdrawals } from './lib/seed'
-import { DEFAULT_NOTIFICATION_PREFERENCES } from './lib/settings'
 import { isSupabaseConfigured } from './lib/supabase'
 
 /**
@@ -25,7 +24,6 @@ export interface DB {
   audit: AuditEntry[]
   adminActor: string
   notificationPreferences: Record<string, Record<string, boolean>>
-  notificationPreferences: Record<string, boolean>
   disputes: TransactionDispute[]
   supportRequests: SupportRequest[]
   authError: string | null
@@ -48,6 +46,10 @@ const initial = (): DB => ({
   audit: [],
   adminActor: 'Compliance A',
   notificationPreferences: {},
+  disputes: [],
+  supportRequests: [],
+  authError: null,
+  authReady: !isSupabaseConfigured,
 })
 
 /** Before v5 one preference map was shared by every account; keep it only for the user who was signed in. */
