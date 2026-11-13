@@ -1,9 +1,18 @@
 import { useStore, type DB } from './store'
 import { DEMO_USER_ID, seedInvestments, seedTxs } from './lib/seed'
-import { DUAL_APPROVAL_THRESHOLD, type DisputeReason, type KycDocuments, type Method, type NewProject, type Project, type SupportRequest, type TransactionDispute, type Tx, type User } from './lib/types'
+import { DUAL_APPROVAL_THRESHOLD, type AuditEntry, type Deposit, type DisputeReason, type KycCase, type KycDocuments, type Method, type NewProject, type Project, type SupportRequest, type TransactionDispute, type Tx, type User, type Withdrawal } from './lib/types'
 import { MINIMUM_DEPOSIT, MINIMUM_WITHDRAWAL } from './lib/settings'
 import { today, uid } from './lib/format'
-import { isSupabaseConfigured, supabase, type ProjectRow } from './lib/supabase'
+import {
+  isSupabaseConfigured,
+  supabase,
+  type AuditEventRow,
+  type DepositRequestRow,
+  type KycCaseRow,
+  type ProfileRow,
+  type ProjectRow,
+  type WithdrawalRequestRow,
+} from './lib/supabase'
 import type { Session } from '@supabase/supabase-js'
 
 export class ApiError extends Error {}
@@ -37,7 +46,7 @@ function requireApproved(): User {
 }
 function requireAdmin() {
   const u = requireUser()
-  if (u.role !== 'admin') throw new ApiError('Admin access required.')
+  if (u.role === 'client') throw new ApiError('Admin access required.')
 }
 function requireMockMode() {
   if (isSupabaseConfigured) throw new ApiError('This workflow is not connected to the backend yet.')
@@ -62,15 +71,29 @@ function projectFromRow(row: ProjectRow): Project {
     lastValuation: row.last_valuation,
   }
 }
-function setBackendUser(session: Session) {
+async function setBackendUser(session: Session, isCurrent: () => boolean = () => true) {
+  if (!supabase) throw new ApiError('Supabase is not configured.')
+  set({ authReady: false, authError: null })
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', session.user.id)
+    .maybeSingle()
+  if (profileError) throw new ApiError(`Could not load your account profile: ${profileError.message}`)
+  if (!profile) throw new ApiError('Your account profile is missing. Contact support.')
+
+  const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors()
+  if (factorsError) throw new ApiError(`Could not load your security settings: ${factorsError.message}`)
+  if (!isCurrent()) return
   const metadata = session.user.user_metadata
   const user: User = {
     id: session.user.id,
-    name: typeof metadata.full_name === 'string' ? metadata.full_name : '',
-    email: session.user.email ?? '',
-    role: session.user.app_metadata?.role === 'admin' ? 'admin' : 'client',
-    kyc: 'not_started',
-    twoFa: false,
+    name: profile.full_name || (typeof metadata.full_name === 'string' ? metadata.full_name : ''),
+    email: profile.email || session.user.email || '',
+    role: profile.is_super_admin ? 'super_admin' : profile.role,
+    kyc: profile.kyc_status,
+    twoFa: factors.totp.some((factor) => factor.status === 'verified'),
+    accountStatus: profile.account_status,
   }
   set({
     user,
@@ -118,6 +141,72 @@ function patchTx(id: string | undefined, patch: Partial<Tx>) {
   set((s) => ({ txs: s.txs.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
 }
 
+function userFromProfile(row: ProfileRow, twoFa = false): User {
+  return {
+    id: row.id,
+    name: row.full_name,
+    email: row.email,
+    role: row.is_super_admin ? 'super_admin' : row.role,
+    kyc: row.kyc_status,
+    twoFa,
+    accountStatus: row.account_status,
+  }
+}
+
+function kycFromRow(row: KycCaseRow): KycCase {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    country: row.country,
+    docType: row.doc_type,
+    status: row.status,
+    reviewReason: row.review_reason ?? undefined,
+    createdAt: row.created_at,
+  }
+}
+
+function depositFromRow(row: DepositRequestRow, users: Map<string, User>): Deposit {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    userName: users.get(row.user_id)?.name ?? row.user_id,
+    amount: Number(row.amount),
+    method: row.method,
+    externalReference: row.external_reference,
+    status: row.status,
+    reviewReason: row.review_reason ?? undefined,
+    createdAt: row.created_at,
+  }
+}
+
+function withdrawalFromRow(row: WithdrawalRequestRow, users: Map<string, User>): Withdrawal {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    userName: users.get(row.user_id)?.name ?? row.user_id,
+    amount: Number(row.amount),
+    method: row.method,
+    destination: row.destination,
+    kycVerified: users.get(row.user_id)?.kyc === 'approved',
+    newAddress: false,
+    status: row.status,
+    firstApprover: row.first_approver_id ? users.get(row.first_approver_id)?.email ?? 'Another administrator' : undefined,
+    reviewReason: row.review_reason ?? undefined,
+    createdAt: row.created_at,
+  }
+}
+
+function auditFromRow(row: AuditEventRow): AuditEntry {
+  return {
+    id: String(row.id),
+    time: new Date(row.created_at).toLocaleString('en-GB', { hour12: false }),
+    actor: row.actor_email || row.actor_id || 'System',
+    action: row.action,
+    reason: row.reason || '—',
+  }
+}
+
 async function updateTwoFactor(enabled: boolean) {
   requireMockMode()
   await wait()
@@ -134,11 +223,22 @@ export const auth = {
     if (!supabase) return () => {}
     let active = true
     let receivedAuthEvent = false
+    let authRequest = 0
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!active) return
       receivedAuthEvent = true
-      if (session) setBackendUser(session)
-      else clearBackendUser()
+      const request = ++authRequest
+      if (!session) {
+        clearBackendUser()
+        return
+      }
+      window.setTimeout(() => {
+        void setBackendUser(session, () => active && request === authRequest).catch((error: unknown) => {
+          if (!active || request !== authRequest) return
+          clearBackendUser()
+          set({ authError: error instanceof Error ? error.message : 'Could not load your account.' })
+        })
+      }, 0)
     })
     void supabase.auth.getSession().then(({ data, error }) => {
       if (!active || receivedAuthEvent) return
@@ -147,7 +247,7 @@ export const auth = {
         set({ authError: error.message })
         return
       }
-      if (data.session) setBackendUser(data.session)
+      if (data.session) return setBackendUser(data.session, () => active && !receivedAuthEvent && authRequest === 0)
       else clearBackendUser()
     }).catch((error: unknown) => {
       if (active && !receivedAuthEvent) {
@@ -172,7 +272,7 @@ export const auth = {
       })
       if (error) throw new ApiError(error.message)
       if (!data.session) return null
-      setBackendUser(data.session)
+      await setBackendUser(data.session)
       return get().user
     }
     const fullNameKey = normalizeFullName(fullName)
@@ -200,7 +300,7 @@ export const auth = {
       const { data, error } = await supabase.auth.signInWithPassword({ email: emailKey, password })
       if (error) throw new ApiError(error.message)
       if (!data.session) throw new ApiError('Sign-in did not return an active session.')
-      setBackendUser(data.session)
+      await setBackendUser(data.session)
       return get().user!
     }
     const c = get().credentials.find((x) => normalizeEmail(x.email) === emailKey)
@@ -251,13 +351,69 @@ export const auth = {
   async enable2fa() {
     return updateTwoFactor(true)
   },
+  async beginTwoFactor() {
+    if (!supabase) {
+      await updateTwoFactor(true)
+      return null
+    }
+    const { data, error } = await supabase.auth.mfa.enroll({
+      factorType: 'totp',
+      friendlyName: 'WiseVest authenticator',
+    })
+    if (error) throw new ApiError(`Could not start authenticator setup: ${error.message}`)
+    return { factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret }
+  },
+  async cancelTwoFactorEnrollment(factorId: string) {
+    if (!supabase) return
+    const { error } = await supabase.auth.mfa.unenroll({ factorId })
+    if (error) throw new ApiError(`Could not cancel authenticator setup: ${error.message}`)
+  },
+  async verifyTwoFactor(factorId: string, code: string) {
+    if (!supabase) throw new ApiError('Authenticator setup is only available with Supabase.')
+    if (!/^\d{6}$/.test(code)) throw new ApiError('Enter your 6-digit authenticator code.')
+    const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId })
+    if (challengeError) throw new ApiError(`Could not verify the authenticator: ${challengeError.message}`)
+    const { error } = await supabase.auth.mfa.verify({ factorId, challengeId: challenge.id, code })
+    if (error) throw new ApiError(`Could not verify the authenticator: ${error.message}`)
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError) throw new ApiError(`Could not refresh your session: ${sessionError.message}`)
+    if (!session) throw new ApiError('Sign in again to continue.')
+    await setBackendUser(session)
+  },
+  async disableTwoFactor() {
+    if (!supabase) return updateTwoFactor(false)
+    const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors()
+    if (factorsError) throw new ApiError(`Could not load authenticator: ${factorsError.message}`)
+    for (const factor of factors.totp.filter((item) => item.status === 'verified')) {
+      const { error } = await supabase.auth.mfa.unenroll({ factorId: factor.id })
+      if (error) throw new ApiError(`Could not remove authenticator: ${error.message}`)
+    }
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError) throw new ApiError(`Could not refresh your session: ${sessionError.message}`)
+    if (!session) throw new ApiError('Sign in again to continue.')
+    await setBackendUser(session)
+  },
   async setTwoFactor(enabled: boolean) {
     return updateTwoFactor(enabled)
   },
   async changePassword(currentPassword: string, newPassword: string) {
     await wait()
-    requireMockMode()
     const user = requireUser()
+    if (supabase) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: user.email, password: currentPassword })
+      if (signInError) throw new ApiError('Current password is incorrect.')
+      const score =
+        (newPassword.length >= 10 ? 1 : 0) +
+        (/[a-z]/.test(newPassword) && /[A-Z]/.test(newPassword) ? 1 : 0) +
+        (/\d/.test(newPassword) ? 1 : 0) +
+        (/[^A-Za-z0-9]/.test(newPassword) ? 1 : 0)
+      if (newPassword.length < 10 || score < 3)
+        throw new ApiError('Use 10+ characters with a mix of letters, numbers and symbols.')
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) throw new ApiError(`Could not update the password: ${error.message}`)
+      return
+    }
+    requireMockMode()
     const credential = get().credentials.find((item) => normalizeEmail(item.email) === normalizeEmail(user.email))
     if (!credential) throw new ApiError('Password changes are unavailable for demo accounts.')
     if (credential.password !== currentPassword) throw new ApiError('Current password is incorrect.')
@@ -282,11 +438,67 @@ export const auth = {
 export const kyc = {
   async submit(data: { name: string; country: string; docType: string; identityDocument: File; selfie: File }) {
     await wait(400)
-    requireMockMode()
     const u = requireUser()
     if (!data.identityDocument || !data.selfie) throw new ApiError('Upload your identity document and selfie.')
     const name = data.name.trim().replace(/\s+/g, ' ')
     const nameKey = normalizeFullName(name)
+    if (supabase) {
+      if (!data.identityDocument.type.match(/^image\/(jpeg|png)$/) && data.identityDocument.type !== 'application/pdf')
+        throw new ApiError('Upload a JPG, PNG, or PDF identity document.')
+      if (!data.selfie.type.match(/^image\/(jpeg|png)$/))
+        throw new ApiError('Upload a JPG or PNG selfie.')
+      const extension = (file: File) => file.type === 'application/pdf' ? 'pdf' : file.type === 'image/png' ? 'png' : 'jpg'
+      const id = crypto.randomUUID()
+      const paths = [
+        `${u.id}/${id}-identity.${extension(data.identityDocument)}`,
+        `${u.id}/${id}-selfie.${extension(data.selfie)}`,
+      ]
+      const uploaded: string[] = []
+      try {
+        const identityUpload = await supabase.storage.from('kyc-documents').upload(paths[0], data.identityDocument, {
+          cacheControl: '3600',
+          contentType: data.identityDocument.type,
+          upsert: false,
+        })
+        if (identityUpload.error) throw new ApiError(`Could not upload identity document: ${identityUpload.error.message}`)
+        uploaded.push(paths[0])
+
+        const selfieUpload = await supabase.storage.from('kyc-documents').upload(paths[1], data.selfie, {
+          cacheControl: '3600',
+          contentType: data.selfie.type,
+          upsert: false,
+        })
+        if (selfieUpload.error) throw new ApiError(`Could not upload selfie: ${selfieUpload.error.message}`)
+        uploaded.push(paths[1])
+
+        const { error } = await supabase.rpc('submit_kyc', {
+          p_name: name,
+          p_country: data.country,
+          p_doc_type: data.docType,
+          p_identity_document_path: paths[0],
+          p_selfie_path: paths[1],
+        })
+        if (error) throw new ApiError(`Could not submit identity verification: ${error.message}`)
+      } catch (issue) {
+        if (uploaded.length) {
+          const { error: cleanupError } = await supabase.storage.from('kyc-documents').remove(uploaded)
+          if (cleanupError) {
+            const message = issue instanceof Error ? issue.message : 'Could not submit identity verification.'
+            throw new ApiError(`${message} Temporary uploads could not be removed; contact support.`)
+          }
+        }
+        if (issue instanceof ApiError) throw issue
+        throw new ApiError(issue instanceof Error ? issue.message : 'Could not submit identity verification.')
+      }
+
+      set((state) => ({
+        user: state.user ? { ...state.user, name, kyc: 'under_review' } : state.user,
+        users: state.users.map((item) => item.id === u.id ? { ...item, name, kyc: 'under_review' } : item),
+      }))
+      return
+    }
+
+    requireMockMode()
     if (get().users.some((x) => x.id !== u.id && normalizeFullName(x.name) === nameKey))
       throw new ApiError('An account already uses this full legal name. Check the details or contact support.')
     const kase = {
@@ -304,6 +516,39 @@ export const kyc = {
 
 /* ---------------- Client money flows ---------------- */
 export const wallet = {
+  async loadOwnRequests() {
+    if (!supabase) return
+    const user = requireUser()
+    const [depositsResult, withdrawalsResult] = await Promise.all([
+      supabase.from('deposit_requests').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+      supabase.from('withdrawal_requests').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+    ])
+    if (depositsResult.error) throw new ApiError(`Could not load deposit history: ${depositsResult.error.message}`)
+    if (withdrawalsResult.error) throw new ApiError(`Could not load withdrawal history: ${withdrawalsResult.error.message}`)
+
+    const users = new Map([[user.id, user]])
+    const deposits = depositsResult.data.map((row) => depositFromRow(row, users))
+    const withdrawals = withdrawalsResult.data.map((row) => withdrawalFromRow(row, users))
+    const transactions: Tx[] = [
+      ...deposits.map((deposit) => ({
+        id: deposit.id,
+        date: deposit.createdAt?.slice(0, 10) ?? today(),
+        type: 'Deposit' as const,
+        detail: deposit.method,
+        amount: deposit.amount,
+        status: deposit.status === 'verified' ? 'Completed' as const : deposit.status === 'rejected' ? 'Rejected' as const : 'Pending' as const,
+      })),
+      ...withdrawals.map((withdrawal) => ({
+        id: withdrawal.id,
+        date: withdrawal.createdAt?.slice(0, 10) ?? today(),
+        type: 'Withdrawal' as const,
+        detail: withdrawal.method,
+        amount: -withdrawal.amount,
+        status: withdrawal.status === 'approved' ? 'Completed' as const : withdrawal.status === 'rejected' ? 'Rejected' as const : 'Pending' as const,
+      })),
+    ].sort((a, b) => b.date.localeCompare(a.date))
+    set({ deposits, withdrawals, txs: transactions })
+  },
   async logDispute(transactionId: string, reason: DisputeReason, description: string) {
     await wait()
     requireMockMode()
@@ -325,8 +570,20 @@ export const wallet = {
     set((state) => ({ disputes: [dispute, ...state.disputes] }))
     return dispute
   },
-  async deposit(method: Method, amount: number) {
+  async deposit(method: Method, amount: number, externalReference = '') {
     await wait()
+    if (supabase) {
+      requireUser()
+      const { data, error } = await supabase.rpc('submit_deposit_request', {
+        p_amount: amount,
+        p_method: method,
+        p_external_reference: externalReference.trim(),
+      })
+      if (error) throw new ApiError(error.message)
+      if (!data) throw new ApiError('Deposit request was not created.')
+      await wallet.loadOwnRequests()
+      return
+    }
     requireMockMode()
     const u = requireApproved()
     if (!(amount >= MINIMUM_DEPOSIT)) throw new ApiError(`Minimum deposit is $${MINIMUM_DEPOSIT}.`)
@@ -339,6 +596,27 @@ export const wallet = {
   },
   async withdraw(method: Method, amount: number, destination: string, code: string) {
     await wait()
+    if (supabase) {
+      requireUser()
+      const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors()
+      if (factorsError) throw new ApiError(`Could not load authenticator: ${factorsError.message}`)
+      const factor = factors.totp.find((item) => item.status === 'verified')
+      if (!factor) throw new ApiError('Enroll in an authenticator in Account settings before requesting a withdrawal.')
+      const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: factor.id })
+      if (challengeError) throw new ApiError(`Could not verify the authenticator: ${challengeError.message}`)
+      const { error: verifyError } = await supabase.auth.mfa.verify({ factorId: factor.id, challengeId: challenge.id, code })
+      if (verifyError) throw new ApiError(`Authenticator code was not accepted: ${verifyError.message}`)
+
+      const { data, error } = await supabase.rpc('submit_withdrawal_request', {
+        p_amount: amount,
+        p_method: method,
+        p_destination: destination.trim(),
+      })
+      if (error) throw new ApiError(error.message)
+      if (!data) throw new ApiError('Withdrawal request was not created.')
+      await wallet.loadOwnRequests()
+      return
+    }
     requireMockMode()
     const u = requireApproved()
     if (!u.twoFa) throw new ApiError('Turn on two-factor authentication before you withdraw.')
@@ -399,12 +677,73 @@ export const support = {
 
 /* ---------------- Admin ---------------- */
 export const admin = {
+  async loadConsole() {
+    if (!supabase) return
+    const [profilesResult, casesResult, depositsResult, withdrawalsResult, auditResult, projectsResult] = await Promise.all([
+      supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+      supabase.from('kyc_cases').select('*').order('created_at', { ascending: false }),
+      supabase.from('deposit_requests').select('*').order('created_at', { ascending: false }),
+      supabase.from('withdrawal_requests').select('*').order('created_at', { ascending: false }),
+      supabase.from('audit_events').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('projects').select('*').order('name'),
+    ])
+    if (profilesResult.error) throw new ApiError(`Could not load users: ${profilesResult.error.message}`)
+    if (casesResult.error) throw new ApiError(`Could not load KYC cases: ${casesResult.error.message}`)
+    if (depositsResult.error) throw new ApiError(`Could not load deposit requests: ${depositsResult.error.message}`)
+    if (withdrawalsResult.error) throw new ApiError(`Could not load withdrawal requests: ${withdrawalsResult.error.message}`)
+    if (auditResult.error) throw new ApiError(`Could not load the audit log: ${auditResult.error.message}`)
+    if (projectsResult.error) throw new ApiError(`Could not load projects: ${projectsResult.error.message}`)
+
+    const currentUser = get().user
+    const users = profilesResult.data.map((row) => userFromProfile(row, row.id === currentUser?.id ? currentUser.twoFa : false))
+    const usersById = new Map(users.map((user) => [user.id, user]))
+    const refreshedUser = currentUser ? usersById.get(currentUser.id) : undefined
+    set({
+      users,
+      user: currentUser && refreshedUser ? { ...refreshedUser, twoFa: currentUser.twoFa } : currentUser,
+      kycCases: casesResult.data.map(kycFromRow),
+      deposits: depositsResult.data.map((row) => depositFromRow(row, usersById)),
+      withdrawals: withdrawalsResult.data.map((row) => withdrawalFromRow(row, usersById)),
+      audit: auditResult.data.map(auditFromRow),
+      projects: projectsResult.data.map(projectFromRow),
+    })
+  },
   setActor(actor: string) {
     set({ adminActor: actor })
   },
+  async setUserRole(userId: string, role: 'client' | 'admin') {
+    if (supabase) {
+      const { error } = await supabase.rpc('admin_set_user_role', { p_user_id: userId, p_role: role })
+      if (error) throw new ApiError(error.message)
+      await admin.loadConsole()
+      return
+    }
+    requireMockMode()
+    requireAdmin()
+    if (get().user?.role !== 'super_admin') throw new ApiError('Super admin access required.')
+    set((state) => ({ users: state.users.map((user) => user.id === userId ? { ...user, role } : user) }))
+  },
+  async setAccountStatus(userId: string, status: 'active' | 'suspended', reason: string) {
+    if (supabase) {
+      const { error } = await supabase.rpc('admin_set_account_status', {
+        p_user_id: userId,
+        p_status: status,
+        p_reason: reason.trim(),
+      })
+      if (error) throw new ApiError(error.message)
+      await admin.loadConsole()
+      return
+    }
+    requireMockMode()
+    requireAdmin()
+    if (reason.trim().length < 5) throw new ApiError('Give a reason of at least 5 characters.')
+    set((state) => ({
+      users: state.users.map((user) => user.id === userId ? { ...user, accountStatus: status } : user),
+    }))
+    log(`Account ${status}: ${userId}`, reason.trim())
+  },
   async createProject(input: NewProject) {
     await wait()
-    requireMockMode()
     requireAdmin()
     const name = input.name.trim()
     if (name.length < 3) throw new ApiError('Project name must be at least 3 characters.')
@@ -418,6 +757,31 @@ export const admin = {
     if (risks.length === 0 || risks.some((risk) => !risk.title || !risk.text))
       throw new ApiError('Add at least one risk with a title and description, and complete every risk.')
 
+    if (supabase) {
+      const { data, error } = await supabase.from('projects').insert({
+        name,
+        category: input.category,
+        icon: input.icon,
+        risk: input.risk,
+        min_invest: input.minInvest,
+        term: input.term,
+        target_return: input.targetReturn,
+        raised_pct: 0,
+        goal: input.goal,
+        fees: input.fees,
+        exit_terms: input.exit,
+        description: input.description,
+        risks,
+        status: 'Draft',
+        last_valuation: 'Not yet valued',
+      }).select('*').single()
+      if (error) throw new ApiError(`Could not create project: ${error.message}`)
+      const project = projectFromRow(data)
+      await admin.loadConsole()
+      return project
+    }
+
+    requireMockMode()
     const project: Project = {
       ...input,
       id: uid('P'),
@@ -431,21 +795,47 @@ export const admin = {
     log(`Created project: ${name}`, 'Created as draft')
     return project
   },
-  getKycDocuments(id: string): KycDocuments | undefined {
-    requireMockMode()
+  async getKycDocuments(id: string): Promise<KycDocuments | { identityDocumentUrl: string; selfieUrl: string } | undefined> {
     requireAdmin()
+    if (supabase) {
+      const { data: kase, error } = await supabase
+        .from('kyc_cases')
+        .select('identity_document_path,selfie_path')
+        .eq('id', id)
+        .maybeSingle()
+      if (error) throw new ApiError(`Could not load identity documents: ${error.message}`)
+      if (!kase) throw new ApiError('Case not found.')
+      const [identity, selfie] = await Promise.all([
+        supabase.storage.from('kyc-documents').createSignedUrl(kase.identity_document_path, 60),
+        supabase.storage.from('kyc-documents').createSignedUrl(kase.selfie_path, 60),
+      ])
+      if (identity.error) throw new ApiError(`Could not open identity document: ${identity.error.message}`)
+      if (selfie.error) throw new ApiError(`Could not open selfie: ${selfie.error.message}`)
+      return { identityDocumentUrl: identity.data.signedUrl, selfieUrl: selfie.data.signedUrl }
+    }
+    requireMockMode()
     if (!get().kycCases.some((x) => x.id === id)) throw new ApiError('Case not found.')
     return get().kycDocuments[id]
   },
   async reviewKyc(id: string, decision: 'approved' | 'rejected', reason = '') {
     await wait()
-    requireMockMode()
     requireAdmin()
+    if (supabase) {
+      const { error } = await supabase.rpc('admin_review_kyc', {
+        p_case_id: id,
+        p_decision: decision,
+        p_reason: reason.trim(),
+      })
+      if (error) throw new ApiError(error.message)
+      await admin.loadConsole()
+      return
+    }
+    requireMockMode()
     const k = get().kycCases.find((x) => x.id === id)
     if (!k) throw new ApiError('Case not found.')
     if (decision === 'approved') {
       if (k.sanctions !== 'Clear') throw new ApiError('Resolve the sanctions screening result before approving.')
-      if (k.faceMatch < 80) throw new ApiError(`Face match is low (${k.faceMatch}%). Request a new selfie or reject with a reason.`)
+      if (k.faceMatch !== undefined && k.faceMatch < 80) throw new ApiError(`Face match is low (${k.faceMatch}%). Request a new selfie or reject with a reason.`)
     } else if (reason.trim().length < 5) throw new ApiError('Give a reason of at least 5 characters.')
     set((s) => ({
       kycCases: s.kycCases.map((x) => (x.id === id ? { ...x, status: decision } : x)),
@@ -454,11 +844,32 @@ export const admin = {
     }))
     log(`${decision === 'approved' ? 'Approved' : 'Rejected'} KYC ${id}`, reason || undefined)
   },
+  async reviewDeposit(id: string, decision: 'verified' | 'rejected', reason = '') {
+    if (supabase) {
+      const { error } = await supabase.rpc('admin_review_deposit', {
+        p_request_id: id,
+        p_decision: decision,
+        p_reason: reason.trim(),
+      })
+      if (error) throw new ApiError(error.message)
+      await admin.loadConsole()
+      return
+    }
+    requireMockMode()
+    requireAdmin()
+    if (decision === 'rejected' && reason.trim().length < 5) throw new ApiError('Give a reason of at least 5 characters.')
+    set((state) => ({
+      deposits: state.deposits.map((deposit) =>
+        deposit.id === id ? { ...deposit, status: decision, reviewReason: reason.trim() || undefined } : deposit,
+      ),
+    }))
+    log(`Deposit ${decision}: ${id}`, reason.trim() || undefined)
+  },
   async advanceConfirmation(id: string) {
     await wait(120)
     requireMockMode()
     requireAdmin()
-    set((s) => ({ deposits: s.deposits.map((d) => (d.id === id && d.confirmations < d.needed ? { ...d, confirmations: d.confirmations + 1 } : d)) }))
+    set((s) => ({ deposits: s.deposits.map((d) => (d.id === id && (d.confirmations ?? 0) < (d.needed ?? 0) ? { ...d, confirmations: (d.confirmations ?? 0) + 1 } : d)) }))
   },
   async creditDeposit(id: string) {
     await wait()
@@ -468,7 +879,7 @@ export const admin = {
     if (!d) throw new ApiError('Deposit not found.')
     if (d.status === 'credited') throw new ApiError('This deposit has already been credited.')
     if (!d.userId) throw new ApiError('This deposit is not linked to a client account.')
-    if (d.confirmations < d.needed) throw new ApiError('Wait for the required confirmations before crediting.')
+    if ((d.confirmations ?? 0) < (d.needed ?? 0)) throw new ApiError('Wait for the required confirmations before crediting.')
     if (!Number.isFinite(d.amount) || d.amount <= 0) throw new ApiError('Deposit amount must be greater than zero.')
     const userId = d.userId
     const balance = getBalance(userId)
@@ -482,8 +893,18 @@ export const admin = {
   },
   async reviewWithdrawal(id: string, decision: 'approve' | 'reject', reason = '') {
     await wait()
-    requireMockMode()
     requireAdmin()
+    if (supabase) {
+      const { error } = await supabase.rpc('admin_review_withdrawal', {
+        p_request_id: id,
+        p_decision: decision,
+        p_reason: reason.trim(),
+      })
+      if (error) throw new ApiError(error.message)
+      await admin.loadConsole()
+      return
+    }
+    requireMockMode()
     const w = get().withdrawals.find((x) => x.id === id)
     const actor = get().adminActor
     if (!w) throw new ApiError('Withdrawal not found.')
@@ -512,18 +933,34 @@ export const admin = {
   },
   async setProjectStatus(id: string, status: Project['status']) {
     await wait(120)
-    requireMockMode()
     requireAdmin()
+    if (supabase) {
+      const { error } = await supabase.from('projects').update({ status }).eq('id', id)
+      if (error) throw new ApiError(`Could not update project status: ${error.message}`)
+      await admin.loadConsole()
+      return
+    }
+    requireMockMode()
     const p = get().projects.find((x) => x.id === id)
     set((s) => ({ projects: s.projects.map((x) => (x.id === id ? { ...x, status } : x)) }))
     log(`Project status: ${p?.name} → ${status}`)
   },
   async postValuation(id: string, pct: number, note: string) {
     await wait()
-    requireMockMode()
     requireAdmin()
     if (!Number.isFinite(pct) || Math.abs(pct) > 100) throw new ApiError('Enter a percentage between −100 and 100.')
     if (note.trim().length < 10) throw new ApiError('Add the source of this valuation (at least 10 characters).')
+    if (supabase) {
+      const { error } = await supabase.rpc('admin_post_project_valuation', {
+        p_project_id: id,
+        p_change_pct: pct,
+        p_source_note: note.trim(),
+      })
+      if (error) throw new ApiError(error.message)
+      await admin.loadConsole()
+      return
+    }
+    requireMockMode()
     const p = get().projects.find((x) => x.id === id)
     set((s) => ({
       investments: s.investments.map((i) => (i.projectId === id ? { ...i, value: Math.round(i.value * (1 + pct / 100) * 100) / 100 } : i)),

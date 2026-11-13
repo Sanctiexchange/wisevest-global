@@ -2,7 +2,7 @@
 
 WiseVest Global is a React + TypeScript front-end prototype for a digital investment platform that combines a public investor-facing experience with internal compliance and operations workflows. The app models a simplified fintech investment flow, including onboarding, KYC review, project investing, deposits, withdrawals, and an admin operations dashboard.
 
-This repository is built as a working demo and product blueprint. Supabase now provides the initial authentication and public project-listing backend; remaining product workflows are still simulated.
+This repository is a product prototype. Supabase can provide authentication, project listings, role-controlled admin operations, KYC document intake, and request-only deposit and withdrawal review. It does not process payments, hold funds, or execute payouts.
 
 ## Product overview
 
@@ -18,7 +18,7 @@ WiseVest Global helps investors:
 It also supports admin users who can:
 
 - Review and approve KYC submissions
-- Review and process deposit and withdrawal requests
+- Review deposit and withdrawal requests without moving funds
 - Manage flagged or rejected cases
 - Monitor project status and operational activity
 - Audit admin actions and decision history
@@ -38,7 +38,7 @@ It also supports admin users who can:
 - Search and filters for transaction and audit tables; exports respect active filters
 - Admin console for operations and compliance review
 - Admin project creation with required risk disclosures; new projects remain drafts until explicitly opened
-- Supabase-backed account authentication and public project listings when configured
+- Supabase-backed authentication, projects, admin operations, KYC intake, and review-only financial requests when configured
 - Persistent mock data layer using Zustand for the remaining demo workflows
 - Responsive UI built with Tailwind CSS
 
@@ -61,10 +61,10 @@ The app uses a simplified mock architecture intended to mirror a real fintech pr
 - `src/components/` contains shared layout, chart, and UI primitives
 - `src/lib/settings.ts` defines the account settings tabs and demo transaction/notification configuration
 - Admin project creation validates required offering details and disclosures before adding a draft to the mock store
-- `src/api.ts` contains the client API layer, including the Supabase-backed auth and project reads
+- `src/api.ts` contains the client API layer, including Supabase-backed user and admin operations
 - `src/store.ts` holds the persisted mock data store
 - `src/lib/supabase.ts` configures the optional Supabase client and database types
-- `supabase/migrations/` contains the initial profile/project schema, row-level security policies, and example projects
+- `supabase/migrations/` contains the profile/project foundation and the admin-console schema, row-level security policies, and RPCs
 
 ## Project structure
 
@@ -123,15 +123,15 @@ npm install
 ### Configure Supabase
 
 1. Create a Supabase project.
-2. In the Supabase SQL Editor, run `supabase/migrations/20261113150000_backend_foundation.sql`.
+2. Apply both migrations in `supabase/migrations/` in filename order, using the Supabase CLI or SQL Editor.
 3. Copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from the project API settings. The browser key is public; never put a service-role key in a `VITE_` variable.
 4. In Supabase Auth settings, configure the site URL and redirect URLs for your local and deployed app.
 5. Restart the Vite server after changing environment variables.
-6. To allow an account to open the admin console, a project owner must set `"role": "admin"` in that user's **app_metadata** in Supabase Auth. Do not set this in user-editable metadata. The user must sign out and sign in again after the change.
+6. To provision a super-admin, the Supabase project owner must set `"role": "super_admin"` in that user's **app_metadata** in Supabase Auth. Never set roles in user-editable metadata. After the user's next sign-in, a super-admin can assign regular admin roles from the console.
 
-With both environment variables set, registration and sign-in use Supabase Auth and the public projects pages query the `projects` table. Without them, the existing browser demo remains available. The migration inserts example project listings; replace these with reviewed, accurate offering information before use.
+With both environment variables set, registration/sign-in use Supabase Auth and project/admin data use Postgres. Without them, the browser demo remains available. The foundation migration inserts example project listings; replace these with reviewed, accurate offering information before use.
 
-The trusted `app_metadata.role` claim only controls access to the admin UI. Admin workflows remain mock-only and are blocked when Supabase is configured; do not use the console for live KYC, deposits, withdrawals, project management, or audit operations.
+The second migration adds protected profile roles, KYC cases and a private document bucket, deposit/withdrawal request queues, project controls, and persistent audit events. KYC decisions are manual; no identity-match or sanctions provider is connected. Deposits marked verified and withdrawals marked approved are only reviewed/authorized requests, not completed payments or payouts. Withdrawals require approved KYC and verified Supabase TOTP; requests over $10,000 require a second, distinct admin approval. No wallet balances are stored or changed.
 
 ### Run locally
 
@@ -176,7 +176,7 @@ These rules are intentionally documented in a way that makes it easy to move the
 
 ## Important note
 
-This project remains a prototype and is not production-ready finance software. The initial Supabase integration covers account authentication and public project reads only. Wallet balances, KYC, investments, deposits, withdrawals, support and admin operations are still mock workflows and are blocked when Supabase is configured. Real deployment would also require:
+This project remains a prototype and is not production-ready finance software. The app remains a prototype and is not production-ready finance software. Investment execution, custody, payment rails, real identity and sanctions checks, and support workflows are not integrated. Real deployment would also require:
 
 - secure authentication and identity verification
 - real document and sanctions checks

@@ -25,11 +25,11 @@ export function Login() {
   const [pw, setPw] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  if (user) return <Navigate to={user.role === 'admin' ? '/admin' : '/app'} replace />
+  if (user) return <Navigate to={user.role !== 'client' ? '/admin' : '/app'} replace />
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setBusy(true); setErr('')
-    try { const u = await auth.login(email, pw); navigate(u.role === 'admin' ? '/admin' : '/app') }
+    try { const u = await auth.login(email, pw); navigate(u.role !== 'client' ? '/admin' : '/app') }
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Something went wrong.') }
     finally { setBusy(false) }
   }
@@ -97,7 +97,7 @@ function SupabaseRegister() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   if (!authReady) return <Frame><p className="text-sm text-muted" role="status">Restoring sign-in session…</p></Frame>
-  if (user) return <Navigate to={user.role === 'admin' ? '/admin' : '/app'} replace />
+  if (user) return <Navigate to={user.role !== 'client' ? '/admin' : '/app'} replace />
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -166,7 +166,7 @@ function DemoRegister() {
   const [dec, setDec] = useState([false, false, false])
   const [errs, setErrs] = useState<Record<string, string>>({})
   const set = (k: keyof typeof f, v: string | boolean) => setF((p) => ({ ...p, [k]: v }))
-  if (user && user.role === 'admin') return <Navigate to="/admin" replace />
+  if (user && user.role !== 'client') return <Navigate to="/admin" replace />
 
   const validate = (): Record<string, string> => {
     const e: Record<string, string> = {}

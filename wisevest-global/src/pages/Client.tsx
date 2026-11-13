@@ -5,7 +5,7 @@ import { wallet, auth, ApiError } from '../api'
 import { downloadCsv, money, parseAmount, signed, today } from '../lib/format'
 import { DEMO_USER_ID, portfolioHistory } from '../lib/seed'
 import type { DisputeReason, Method, Tx } from '../lib/types'
-import { MINIMUM_DEPOSIT } from '../lib/settings'
+import { MINIMUM_DEPOSIT, MINIMUM_WITHDRAWAL } from '../lib/settings'
 import { Button, Empty, Field, Modal, PageTitle, Progress, RiskNotice, Segmented, Tag, cx, riskTone, useToast } from '../components/ui'
 import { Donut, LineChart } from '../components/charts'
 import { isSupabaseConfigured } from '../lib/supabase'
@@ -107,11 +107,88 @@ const ADDR: Record<Method, string> = {
   Bank: 'Account name: WiseVest Global Ltd\nBank and account number: shown here once configured\nReference: WV-DEMO-1042',
 }
 
-function BackendUnavailable({ title }: { title: string }) {
+function SupabaseDepositRequest() {
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [method, setMethod] = useState<Method>('BTC')
+  const [amount, setAmount] = useState('')
+  const [reference, setReference] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const submit = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await wallet.deposit(method, parseAmount(amount), reference)
+      toast('Deposit request submitted for manual review.')
+      navigate('/app/transactions')
+    } catch (issue) {
+      setError(issue instanceof ApiError ? issue.message : 'Could not submit the deposit request.')
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <div className="card mx-auto w-full max-w-[560px]">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      <p className="mt-3 text-sm text-muted">This feature is not connected to the backend yet. No funds or financial activity can be processed here.</p>
+      <h1 className="text-2xl font-bold">Submit deposit for review</h1>
+      <p className="mb-3 mt-2 rounded-xl border border-amber/30 bg-amber/10 p-3 text-sm text-amber">
+        Payments are not connected. Only submit a reference for a payment you have already made through an approved channel. This request does not credit your account.
+      </p>
+      <label className="lbl">Method</label>
+      <Segmented options={METHODS} value={method} onChange={setMethod} labels={{ BTC: 'BTC', USDT: 'USDT', USDC: 'USDC', Bank: 'Bank' }} />
+      <Field label="Amount (USD)" htmlFor="deposit-amount">
+        <input id="deposit-amount" type="number" min={MINIMUM_DEPOSIT} step="0.01" className="input" value={amount} onChange={(event) => setAmount(event.target.value)} />
+      </Field>
+      <Field label="External transaction/reference ID" htmlFor="deposit-reference" error={error}>
+        <input id="deposit-reference" autoComplete="off" className="input" value={reference} onChange={(event) => setReference(event.target.value)} />
+      </Field>
+      <Button block loading={busy} onClick={() => { void submit() }}>Submit for review</Button>
+    </div>
+  )
+}
+
+function SupabaseWithdrawalRequest() {
+  const navigate = useNavigate()
+  const toast = useToast()
+  const user = useStore((state) => state.user)!
+  const [method, setMethod] = useState<Method>('BTC')
+  const [amount, setAmount] = useState('')
+  const [destination, setDestination] = useState('')
+  const [code, setCode] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const submit = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await wallet.withdraw(method, parseAmount(amount), destination, code)
+      toast('Withdrawal request submitted for review. No payout was sent.')
+      navigate('/app/transactions')
+    } catch (issue) {
+      setError(issue instanceof ApiError ? issue.message : 'Could not submit the withdrawal request.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="card mx-auto w-full max-w-[560px]">
+      <h1 className="text-2xl font-bold">Submit withdrawal for review</h1>
+      <p className="mb-3 mt-2 rounded-xl border border-amber/30 bg-amber/10 p-3 text-sm text-amber">
+        Approved requests are recorded for manual external processing. This app does not check balances or send payouts.
+      </p>
+      {user.kyc !== 'approved' && <p className="err" role="alert">Complete identity verification before requesting a withdrawal.</p>}
+      <label className="lbl">Method</label>
+      <Segmented options={METHODS} value={method} onChange={setMethod} labels={{ BTC: 'BTC', USDT: 'USDT', USDC: 'USDC', Bank: 'Bank' }} />
+      <Field label="Amount (USD)" htmlFor="withdrawal-amount">
+        <input id="withdrawal-amount" type="number" min={MINIMUM_WITHDRAWAL} step="0.01" className="input" value={amount} onChange={(event) => setAmount(event.target.value)} />
+      </Field>
+      <Field label="Destination" htmlFor="withdrawal-destination">
+        <input id="withdrawal-destination" autoComplete="off" className="input" value={destination} onChange={(event) => setDestination(event.target.value)} />
+      </Field>
+      <Field label="Authenticator code" htmlFor="withdrawal-code" error={error}>
+        <input id="withdrawal-code" type="password" inputMode="numeric" autoComplete="one-time-code" maxLength={6} className="input" value={code} onChange={(event) => setCode(event.target.value)} />
+      </Field>
+      <Button block loading={busy} disabled={user.kyc !== 'approved'} onClick={() => { void submit() }}>Submit for review</Button>
     </div>
   )
 }
@@ -137,7 +214,7 @@ export function Deposit() {
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Something went wrong.') }
     finally { setBusy(false) }
   }
-  if (isSupabaseConfigured) return <BackendUnavailable title="Deposits are not available yet" />
+  if (isSupabaseConfigured) return <SupabaseDepositRequest />
   return (
     <div className="card mx-auto w-full max-w-[560px]">
       <Link to="/app" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-muted transition hover:text-neon">
@@ -178,7 +255,7 @@ export function Withdraw() {
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Something went wrong.') }
     finally { setBusy(false) }
   }
-  if (isSupabaseConfigured) return <BackendUnavailable title="Withdrawals are not available yet" />
+  if (isSupabaseConfigured) return <SupabaseWithdrawalRequest />
   return (
     <div className="card mx-auto w-full max-w-[560px]">
       <Link to="/app" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-muted transition hover:text-neon">
@@ -304,6 +381,7 @@ export function Transactions() {
           >
             <option value="All">All statuses</option>
             <option value="Completed">Completed</option>
+            <option value="Reviewed">Reviewed (not processed)</option>
             <option value="Pending">Pending</option>
             <option value="Rejected">Rejected</option>
           </select>

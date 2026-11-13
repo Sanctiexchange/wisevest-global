@@ -5,7 +5,7 @@ import Landing from './pages/Landing'
 import { Login, Register } from './pages/Auth'
 import { ProjectDetail, ProjectsPage } from './pages/Projects'
 import { Dashboard, Deposit, Investments, Transactions, Withdraw } from './pages/Client'
-import { AdminAudit, AdminDeposits, AdminKyc, AdminOverview, AdminProjects, AdminWithdrawals } from './pages/Admin'
+import { AdminAudit, AdminDeposits, AdminKyc, AdminOverview, AdminProjects, AdminUsers, AdminWithdrawals } from './pages/Admin'
 import Settings from './pages/Settings'
 import { auth } from './api'
 
@@ -31,6 +31,7 @@ export default function App() {
       </Route>
       <Route path="admin" element={<AdminLayout />}>
         <Route index element={<AdminOverview />} />
+        <Route path="users" element={<AdminUsers />} />
         <Route path="kyc" element={<AdminKyc />} />
         <Route path="withdrawals" element={<AdminWithdrawals />} />
         <Route path="deposits" element={<AdminDeposits />} />

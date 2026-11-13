@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { Logo, RiskNotice, cx, useToast } from './ui'
 import { useStore } from '../store'
-import { admin, auth, resetDemo, ApiError } from '../api'
+import { admin, auth, resetDemo, ApiError, wallet } from '../api'
 import { ADMIN_ACTORS } from '../lib/types'
 import SupportModal from './SupportModal'
 import { isSupabaseConfigured } from '../lib/supabase'
@@ -10,7 +10,7 @@ import { isSupabaseConfigured } from '../lib/supabase'
 export function PublicLayout() {
   const user = useStore((s) => s.user)
   const [open, setOpen] = useState(false)
-  const home = user ? (user.role === 'admin' ? '/admin' : '/app') : '/login'
+  const home = user ? (user.role !== 'client' ? '/admin' : '/app') : '/login'
   return (
     <div>
       <nav className="sticky top-[env(safe-area-inset-top,0px)] z-50 border-b border-line bg-bg/85 backdrop-blur-xl">
@@ -88,9 +88,22 @@ function Shell({ items, role, children, extra }: { items: Item[]; role: string; 
 export function ClientLayout() {
   const user = useStore((s) => s.user)
   const authReady = useStore((s) => s.authReady)
+  const [loadError, setLoadError] = useState('')
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user || user.role !== 'client' || user.accountStatus === 'suspended') return
+    let active = true
+    setLoadError('')
+    void wallet.loadOwnRequests()
+      .then(() => { if (active) setLoadError('') })
+      .catch((issue: unknown) => {
+        if (active) setLoadError(issue instanceof ApiError ? issue.message : 'Could not load your request history.')
+      })
+    return () => { active = false }
+  }, [user?.id, user?.role, user?.accountStatus])
   if (isSupabaseConfigured && !authReady) return <div className="grid min-h-screen place-items-center text-muted" role="status">Restoring sign-in session…</div>
   if (!user) return <Navigate to="/login" replace />
   if (user.role !== 'client') return <Navigate to="/admin" replace />
+  if (user.accountStatus === 'suspended') return <div className="grid min-h-screen place-items-center px-5"><div className="card max-w-lg text-center"><h1 className="text-2xl font-bold">Account suspended</h1><p className="mt-2 text-sm text-muted">Contact support for help with this account.</p></div></div>
   const items: Item[] = [
     { to: '/app', label: 'Home', icon: '▦', end: true },
     { to: '/app/investments', label: 'Invest', icon: '◈' },
@@ -102,7 +115,7 @@ export function ClientLayout() {
   const banner =
     isSupabaseConfigured ? (
       <div className="mb-5 rounded-xl border border-amber/30 bg-amber/10 p-4 text-sm text-amber">
-        Only account authentication and public project listings are connected. KYC, balances, deposits, investments, withdrawals and support are not available in this backend milestone.
+        KYC documents and deposit/withdrawal requests are stored for manual review. This prototype does not process payments, change balances, or execute payouts.
       </div>
     ) : user.kyc === 'approved' ? null : (
       <div className="mb-5 rounded-xl border border-amber/30 bg-amber/10 p-4 text-sm text-amber">
@@ -114,6 +127,7 @@ export function ClientLayout() {
   return (
     <Shell items={items} role="Investor">
       {banner}
+      {loadError && <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger" role="alert">{loadError}</div>}
       <Outlet />
     </Shell>
   )
@@ -125,9 +139,19 @@ export function AdminLayout() {
   const user = useStore((s) => s.user)
   const authReady = useStore((s) => s.authReady)
   const actor = useStore((s) => s.adminActor)
+  const [loadError, setLoadError] = useState('')
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user || user.role === 'client') return
+    let active = true
+    setLoadError('')
+    void admin.loadConsole().catch((issue: unknown) => {
+      if (active) setLoadError(issue instanceof ApiError ? issue.message : 'Could not load the admin console.')
+    })
+    return () => { active = false }
+  }, [user?.id, user?.role])
   if (isSupabaseConfigured && !authReady) return <div className="grid min-h-screen place-items-center text-muted" role="status">Restoring sign-in session…</div>
   if (!user) return <Navigate to="/login" replace />
-  if (user.role !== 'admin') {
+  if (user.role === 'client') {
     return (
       <div className="grid min-h-screen place-items-center px-5">
         <div className="card max-w-lg text-center">
@@ -155,8 +179,12 @@ export function AdminLayout() {
       </div>
     )
   }
+  if (user.accountStatus === 'suspended' && user.role !== 'super_admin') {
+    return <div className="grid min-h-screen place-items-center px-5"><div className="card max-w-lg text-center"><h1 className="text-2xl font-bold">Admin access suspended</h1><p className="mt-2 text-sm text-muted">Contact a super admin for help.</p></div></div>
+  }
   const items: Item[] = [
     { to: '/admin', label: 'Overview', icon: '▦', end: true },
+    { to: '/admin/users', label: 'Users', icon: '♙' },
     { to: '/admin/kyc', label: 'KYC', icon: '🛡' },
     { to: '/admin/withdrawals', label: 'Withdraw', icon: '↑' },
     { to: '/admin/deposits', label: 'Deposits', icon: '↓' },
@@ -173,18 +201,19 @@ export function AdminLayout() {
     </div>
   )
   return (
-    <Shell items={items} role="Admin console" extra={extra}>
+    <Shell items={items} role={user.role === 'super_admin' ? 'Super admin console' : 'Admin console'} extra={extra}>
       {isSupabaseConfigured && (
         <div className="mb-5 rounded-xl border border-amber/30 bg-amber/10 p-4 text-sm text-amber" role="status">
-          Admin access is enabled, but this console still uses demo data. KYC, deposits, withdrawals, project administration, and audit actions are not connected to Supabase.
+          Financial requests and KYC reviews are stored for manual review only. Verifying a deposit does not credit a balance, and approving a withdrawal does not send funds.
         </div>
       )}
-      <div className="mb-4 md:hidden">
+      {loadError && <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger" role="alert">{loadError}</div>}
+      {!isSupabaseConfigured && <div className="mb-4 md:hidden">
         <label className="mb-1 block text-xs text-muted" htmlFor="actor-m">Acting as</label>
         <select id="actor-m" className="input !py-2 text-sm" value={actor} onChange={(e) => admin.setActor(e.target.value)}>
           {ADMIN_ACTORS.map((a) => <option key={a}>{a}</option>)}
         </select>
-      </div>
+      </div>}
       <Outlet />
     </Shell>
   )
