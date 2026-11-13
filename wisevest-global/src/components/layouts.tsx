@@ -1,4 +1,4 @@
-import { useState } from 'react'
+//.import { useState } from 'react'
 import { Link, NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { Logo, RiskNotice, cx, useToast } from './ui'
 import { useStore } from '../store'
@@ -9,7 +9,7 @@ import { isSupabaseConfigured } from '../lib/supabase'
 
 export function PublicLayout() {
   const user = useStore((s) => s.user)
-  const [open, setOpen] = useState(false)
+  // const [open, setOpen] = useState(false)
   const home = user ? (user.role === 'admin' ? '/admin' : '/app') : '/login'
   return (
     <div>
