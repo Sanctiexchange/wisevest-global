@@ -158,7 +158,7 @@ export function AdminLayout() {
           <h1 className="text-2xl font-bold">Admin access required</h1>
           <p className="mt-2 text-sm text-muted">
             {isSupabaseConfigured
-              ? 'This account does not have the trusted admin role. Ask a project owner to set app_metadata.role to "admin" for this user in Supabase, then sign out and back in.'
+              ? 'This account does not have trusted admin access. Sign in or register with the account you want to use, then ask a Supabase project owner to set its app_metadata.role to "super_admin". Sign out and back in after the change; the admin console will open automatically.'
               : 'You’re signed in as an investor. Sign out, then choose “Continue as demo admin” on the sign-in page.'}
           </p>
           <button
