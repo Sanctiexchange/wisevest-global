@@ -149,6 +149,30 @@ Then open:
 npm run build
 ```
 
+### Run with Docker
+
+Install and start Docker Desktop, then run these commands from the project directory:
+
+```bash
+docker compose up --build
+```
+
+Open http://localhost:5173. The development container mounts the project directory, so source changes are picked up by Vite. Stop it with `Ctrl+C` (or run `docker compose down` in another terminal).
+
+To build and serve the production app instead:
+
+```bash
+docker compose --profile production up --build web
+```
+
+Open http://localhost:8080. If you use Supabase, pass the browser-safe values from `.env.local` to Compose when building the production image:
+
+```bash
+docker compose --env-file .env.local --profile production up --build web
+```
+
+Only `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` belong in the frontend image. Never pass a Supabase service-role key as a build argument.
+
 ## Demo access
 
 The app includes demo user flows for quick testing:
