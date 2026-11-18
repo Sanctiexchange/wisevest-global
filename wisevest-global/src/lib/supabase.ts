@@ -12,6 +12,7 @@ export type ProjectRow = {
   target_return: string
   raised_pct: number
   goal: string
+  funding_goal: number | null
   fees: string
   exit_terms: string
   description: string
@@ -101,6 +102,15 @@ export type SimulatedBalanceCreditRow = {
   created_at: string
 }
 
+export type InvestmentRow = {
+  id: string
+  user_id: string
+  project_id: string
+  amount: number
+  value: number
+  created_at: string
+}
+
 type EmptyRow = Record<string, never>
 
 type Database = {
@@ -108,8 +118,14 @@ type Database = {
     Tables: {
       projects: {
         Row: ProjectRow
-        Insert: Omit<ProjectRow, 'id'> & { id?: string }
+        Insert: Omit<ProjectRow, 'id' | 'funding_goal'> & { id?: string; funding_goal?: number | null }
         Update: Partial<Omit<ProjectRow, 'id'>>
+        Relationships: []
+      }
+      investments: {
+        Row: InvestmentRow
+        Insert: EmptyRow
+        Update: EmptyRow
         Relationships: []
       }
       profiles: {
@@ -173,6 +189,7 @@ type Database = {
       admin_review_withdrawal: { Args: { p_request_id: string; p_decision: 'approve' | 'reject'; p_reason?: string }; Returns: string }
       admin_simulate_balance_credit: { Args: { p_user_id: string; p_amount: number; p_reason: string }; Returns: string }
       admin_post_project_valuation: { Args: { p_project_id: string; p_change_pct: number; p_source_note: string }; Returns: undefined }
+      invest_in_project: { Args: { p_project_id: string; p_amount: number }; Returns: string }
     }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>

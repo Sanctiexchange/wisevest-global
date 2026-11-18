@@ -95,7 +95,7 @@ export function AdminOverview() {
         <h2 className="mb-1 text-lg font-bold">Needs attention</h2>
         {stats[0][1] > 0 && <Row actions={<Link to="/admin/kyc" className="rounded-full border border-line px-4 py-2 text-sm">Open queue</Link>}><b>{stats[0][1]} identity checks waiting</b><div className="fine">Review submitted documents and record a decision.</div></Row>}
         {big > 0 && <Row actions={<Link to="/admin/withdrawals" className="rounded-full border border-line px-4 py-2 text-sm">Review</Link>}><b>{big} large withdrawal needs dual approval</b><div className="fine">Over {money(DUAL_APPROVAL_THRESHOLD)}.</div></Row>}
-        {stats[2][1] > 0 && <Row actions={<Link to="/admin/deposits" className="rounded-full border border-line px-4 py-2 text-sm">Review</Link>}><b>{stats[2][1]} deposit requests awaiting review</b><div className="fine">Verify receipts independently; verification adds simulated test balance only.</div></Row>}
+        {stats[2][1] > 0 && <Row actions={<Link to="/admin/deposits" className="rounded-full border border-line px-4 py-2 text-sm">Review</Link>}><b>{stats[2][1]} deposit requests awaiting review</b><div className="fine">Verify receipts independently; verification adds test balance only.</div></Row>}
         {stats[0][1] + stats[2][1] + big === 0 && <Empty>Nothing waiting. All caught up.</Empty>}
       </div>
     </>
@@ -143,10 +143,10 @@ export function AdminUsers() {
     setCreditError('')
     try {
       await admin.simulateBalanceCredit(creditTargetId, parseAmount(creditAmount), creditReason)
-      toast('Simulated balance credit recorded.')
+      toast('Test balance credit recorded.')
       closeCredit()
     } catch (issue) {
-      setCreditError(issue instanceof ApiError ? issue.message : 'Could not add the simulated credit.')
+      setCreditError(issue instanceof ApiError ? issue.message : 'Could not add the test credit.')
     } finally {
       setCreditBusy(false)
     }
@@ -154,7 +154,7 @@ export function AdminUsers() {
 
   return (
     <>
-      <PageTitle title="Users" sub="Balance credits are simulated test funds only and are recorded in the audit log." />
+      <PageTitle title="Users" sub="Balance credits are test funds only and are recorded in the audit log." />
       <div className="mb-3 flex flex-wrap gap-2">
         <input
           type="search"
@@ -219,7 +219,7 @@ export function AdminUsers() {
             </>}>
               <b>{user.name || 'Name not provided'}{self ? ' (you)' : ''}</b>
               <div className="fine">{user.email} · {user.id}</div>
-              {user.role === 'client' && <div className="fine">Simulated balance: <b className="text-ink">{money(balances[user.id] ?? 0, 2)}</b></div>}
+              {user.role === 'client' && <div className="fine">Test balance: <b className="text-ink">{money(balances[user.id] ?? 0, 2)}</b></div>}
               <Tag tone={user.role === 'client' ? 'default' : 'ok'}>{user.role.replace('_', ' ')}</Tag>
               <Tag tone={accountStatus === 'active' ? 'ok' : 'bad'}>{accountStatus}</Tag>
               <Tag tone={user.kyc === 'approved' ? 'ok' : user.kyc === 'rejected' ? 'bad' : 'warn'}>KYC: {user.kyc.replace(/_/g, ' ')}</Tag>
@@ -229,14 +229,14 @@ export function AdminUsers() {
       </div>
       {modal}
       <Modal open={!!creditTargetId} onClose={closeCredit}>
-        <h2 className="text-xl font-bold">Add simulated balance credit</h2>
+        <h2 className="text-xl font-bold">Add test balance credit</h2>
         <p className="mt-2 text-sm text-muted">
           This adds test-only balance and does not represent a payment or real funds. The credit and reason are recorded in the audit log.
         </p>
         <form className="mt-3" onSubmit={(event) => { void submitCredit(event) }}>
-          <Field label="Amount (USD)" htmlFor="simulated-credit-amount">
+          <Field label="Amount (USD)" htmlFor="test-credit-amount">
             <input
-              id="simulated-credit-amount"
+              id="test-credit-amount"
               type="number"
               min="0.01"
               max="999999999999.99"
@@ -247,9 +247,9 @@ export function AdminUsers() {
               onChange={(event) => setCreditAmount(event.target.value)}
             />
           </Field>
-          <Field label="Reason (required)" htmlFor="simulated-credit-reason" error={creditError}>
+          <Field label="Reason (required)" htmlFor="test-credit-reason" error={creditError}>
             <textarea
-              id="simulated-credit-reason"
+              id="test-credit-reason"
               className="input min-h-[80px]"
               minLength={5}
               maxLength={500}
@@ -378,14 +378,14 @@ export function AdminDeposits() {
   const advanceConfirmation = async (id: string) => {
     try {
       await admin.advanceConfirmation(id)
-      toast('Simulated confirmation added.')
+      toast('Test confirmation added.')
     } catch (issue) {
-      toast(issue instanceof ApiError ? issue.message : 'Could not add a simulated confirmation.')
+      toast(issue instanceof ApiError ? issue.message : 'Could not add a test confirmation.')
     }
   }
   return (
     <>
-      <PageTitle title="Deposit requests" sub="Verifying a Supabase deposit adds simulated test balance. Demo deposits use simulated confirmations." />
+      <PageTitle title="Deposit requests" sub="Verifying a Supabase deposit adds test balance only. Demo deposits use test confirmations." />
       <div className="card">
         {list.length === 0 && <Empty>No deposit requests.</Empty>}
         {list.map((d) => (
@@ -394,8 +394,8 @@ export function AdminDeposits() {
                 <Button className={small} onClick={() => open({
                   title: d.needed === undefined ? `Verify and credit ${money(d.amount)} ${d.method}?` : `Verify ${money(d.amount)} ${d.method}?`,
                   text: d.needed === undefined
-                    ? 'Confirm the external receipt independently. This records verification and adds a simulated test-balance credit atomically; it does not represent real funds.'
-                    : 'Confirm the external receipt independently. This records verification; the demo balance can be credited after simulated confirmations.',
+                    ? 'Confirm the external receipt independently. This records verification and adds test balance atomically; it does not represent real funds.'
+                    : 'Confirm the external receipt independently. This records verification; the demo balance can be credited after test confirmations.',
                   run: () => admin.reviewDeposit(d.id, 'verified'),
                 })}>{d.needed === undefined ? 'Verify & credit test balance' : 'Verify receipt'}</Button>
                 <Button variant="danger" className={small} onClick={() => open({ title: `Reject deposit request ${d.id}?`, text: 'Provide a reason for the audit log.', reason: true, run: (reason) => admin.reviewDeposit(d.id, 'rejected', reason) })}>Reject</Button>
@@ -407,7 +407,7 @@ export function AdminDeposits() {
                   disabled={(d.confirmations ?? 0) >= d.needed}
                   onClick={() => { void advanceConfirmation(d.id) }}
                 >
-                  Simulate confirmation
+                  Add test confirmation
                 </Button>
               )}
               {d.needed !== undefined && d.status === 'verified' && (d.confirmations ?? 0) >= d.needed && (
@@ -415,7 +415,7 @@ export function AdminDeposits() {
                   className={small}
                   onClick={() => open({
                     title: `Credit ${money(d.amount)} to the test balance?`,
-                    text: 'This simulated credit is not a payment and does not represent real funds.',
+                    text: 'This test credit is not a payment and does not represent real funds.',
                     run: () => admin.creditDeposit(d.id),
                   })}
                 >
@@ -426,7 +426,7 @@ export function AdminDeposits() {
               <b>{money(d.amount)} · {d.method} · {d.id}</b>
               <div className="fine">{d.userName} · Account {d.userId}</div>
               <div className="fine">External reference: {d.externalReference ?? 'Demo request'}</div>
-              {d.needed !== undefined && <div className="fine">Simulated confirmations: {d.confirmations ?? 0}/{d.needed}</div>}
+              {d.needed !== undefined && <div className="fine">Test confirmations: {d.confirmations ?? 0}/{d.needed}</div>}
               <Tag tone={d.status === 'verified' || d.status === 'credited' ? 'ok' : d.status === 'rejected' ? 'bad' : 'warn'}>
                 {d.status === 'verified' && d.needed === undefined ? 'verified · test balance credited' : d.status}
               </Tag>
