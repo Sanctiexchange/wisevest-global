@@ -123,7 +123,7 @@ npm install
 ### Configure Supabase
 
 1. Create a Supabase project.
-2. Apply both migrations in `supabase/migrations/` in filename order, using the Supabase CLI or SQL Editor.
+2. Apply all migrations in `supabase/migrations/` in filename order, using the Supabase CLI or SQL Editor.
 3. Copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from the project API settings. The browser key is public; never put a service-role key in a `VITE_` variable.
 4. In Supabase Auth settings, configure the site URL and redirect URLs for your local and deployed app.
 5. Restart the Vite server after changing environment variables.
@@ -131,7 +131,7 @@ npm install
 
 With both environment variables set, registration/sign-in use Supabase Auth and project/admin data use Postgres. Without them, the browser demo remains available. The foundation migration inserts example project listings; replace these with reviewed, accurate offering information before use.
 
-The second migration adds protected profile roles, KYC cases and a private document bucket, deposit/withdrawal request queues, project controls, and persistent audit events. KYC decisions are manual; no identity-match or sanctions provider is connected. Deposits marked verified and withdrawals marked approved are only reviewed/authorized requests, not completed payments or payouts. Withdrawals require approved KYC and verified Supabase TOTP; requests over $10,000 require a second, distinct admin approval. No wallet balances are stored or changed.
+The second migration adds protected profile roles, KYC cases and a private document bucket, deposit/withdrawal request queues, project controls, and persistent audit events. KYC decisions are manual; no identity-match or sanctions provider is connected. Withdrawals marked approved are reviewed/authorized requests, not completed payouts. Withdrawals require approved KYC and verified Supabase TOTP; requests over $10,000 require a second, distinct admin approval. The third migration adds admin-issued simulated test balance credits with an audit trail; these are not real funds. The fourth migration makes deposit verification atomically add the corresponding simulated balance credit and records both actions in the audit log; verifying a receipt does not process a real payment. To test balances, use **Admin → Users → Add test credit** or verify a deposit in **Admin → Deposits**.
 
 ### Run locally
 

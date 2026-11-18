@@ -85,6 +85,22 @@ export type AuditEventRow = {
   created_at: string
 }
 
+export type SimulatedWalletBalanceRow = {
+  user_id: string
+  balance: number
+  updated_at: string
+}
+
+export type SimulatedBalanceCreditRow = {
+  id: string
+  user_id: string
+  amount: number
+  balance_after: number
+  reason: string
+  created_by: string | null
+  created_at: string
+}
+
 type EmptyRow = Record<string, never>
 
 type Database = {
@@ -126,6 +142,18 @@ type Database = {
         Update: EmptyRow
         Relationships: []
       }
+      simulated_wallet_balances: {
+        Row: SimulatedWalletBalanceRow
+        Insert: EmptyRow
+        Update: EmptyRow
+        Relationships: []
+      }
+      simulated_balance_credits: {
+        Row: SimulatedBalanceCreditRow
+        Insert: EmptyRow
+        Update: EmptyRow
+        Relationships: []
+      }
       project_valuations: {
         Row: { id: string; project_id: string; change_pct: number; source_note: string; created_by: string | null; created_at: string }
         Insert: EmptyRow
@@ -143,6 +171,7 @@ type Database = {
       admin_review_deposit: { Args: { p_request_id: string; p_decision: 'verified' | 'rejected'; p_reason?: string }; Returns: undefined }
       submit_withdrawal_request: { Args: { p_amount: number; p_method: 'BTC' | 'USDT' | 'USDC' | 'Bank'; p_destination: string }; Returns: string }
       admin_review_withdrawal: { Args: { p_request_id: string; p_decision: 'approve' | 'reject'; p_reason?: string }; Returns: string }
+      admin_simulate_balance_credit: { Args: { p_user_id: string; p_amount: number; p_reason: string }; Returns: string }
       admin_post_project_valuation: { Args: { p_project_id: string; p_change_pct: number; p_source_note: string }; Returns: undefined }
     }
     Enums: Record<string, never>

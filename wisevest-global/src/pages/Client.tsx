@@ -35,7 +35,7 @@ export function Dashboard() {
   const cards = [
     ['Total portfolio', money(value + cash, 2), invested ? `${signed(pl)} reported gain` : 'Fund your account to begin', pl >= 0 ? 'text-neon' : 'text-danger', true],
     ['Invested', money(invested, 2), `${holdings.length} active project${holdings.length === 1 ? '' : 's'}`, 'text-muted', false],
-    ['Available cash', money(cash, 2), 'Ready to invest or withdraw', 'text-muted', false],
+    ['Available cash', money(cash, 2), isSupabaseConfigured ? 'Simulated test balance only' : 'Ready to invest or withdraw', 'text-muted', false],
     ['Reported return', invested ? `${pct >= 0 ? '+' : '−'}${Math.abs(pct).toFixed(1)}%` : '—', 'Since first investment', 'text-muted', false],
   ] as const
   return (
@@ -280,7 +280,7 @@ export function Withdraw() {
   )
 }
 
-const TYPES = ['All', 'Deposit', 'Withdrawal', 'Investment'] as const
+const TYPES = ['All', 'Deposit', 'Withdrawal', 'Investment', 'Adjustment'] as const
 const DISPUTE_REASONS: { value: DisputeReason; label: string }[] = [
   { value: 'DELAYED', label: 'Transaction is delayed' },
   { value: 'NOT_RECEIVED', label: 'Funds were not received' },
@@ -400,7 +400,9 @@ export function Transactions() {
                 <td className={cx('border-b border-line p-3', t.amount > 0 && 'text-neon')}>{signed(t.amount)}</td>
                 <td className="border-b border-line p-3"><Tag tone={t.status === 'Completed' ? 'ok' : t.status === 'Rejected' ? 'bad' : 'warn'}>{t.status}</Tag></td>
                 <td className="border-b border-line p-3">
-                  {disputes.some((dispute) => dispute.transactionId === t.id) ? (
+                  {t.type === 'Adjustment' ? (
+                    <span className="text-xs text-muted">Simulated test credit</span>
+                  ) : disputes.some((dispute) => dispute.transactionId === t.id) ? (
                     <span className="text-xs font-medium text-muted">Dispute logged</span>
                   ) : (
                     <button
