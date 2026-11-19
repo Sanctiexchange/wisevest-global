@@ -123,7 +123,7 @@ npm install
 ### Configure Supabase
 
 1. Create a Supabase project.
-2. Apply both migrations in `supabase/migrations/` in filename order, using the Supabase CLI or SQL Editor.
+2. Apply all migrations in `supabase/migrations/` in filename order, using the Supabase CLI or SQL Editor.
 3. Copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from the project API settings. The browser key is public; never put a service-role key in a `VITE_` variable.
 4. In Supabase Auth settings, configure the site URL and redirect URLs for your local and deployed app.
 5. Restart the Vite server after changing environment variables.
@@ -131,7 +131,7 @@ npm install
 
 With both environment variables set, registration/sign-in use Supabase Auth and project/admin data use Postgres. Without them, the browser demo remains available. The foundation migration inserts example project listings; replace these with reviewed, accurate offering information before use.
 
-The second migration adds protected profile roles, KYC cases and a private document bucket, deposit/withdrawal request queues, project controls, and persistent audit events. KYC decisions are manual; no identity-match or sanctions provider is connected. Deposits marked verified and withdrawals marked approved are only reviewed/authorized requests, not completed payments or payouts. Withdrawals require approved KYC and verified Supabase TOTP; requests over $10,000 require a second, distinct admin approval. No wallet balances are stored or changed.
+The second migration adds protected profile roles, KYC cases and a private document bucket, deposit/withdrawal request queues, project controls, and persistent audit events. KYC decisions are manual; no identity-match or sanctions provider is connected. Withdrawals marked approved are reviewed/authorized requests, not completed payouts. Withdrawals require approved KYC and verified Supabase TOTP; requests over $10,000 require a second, distinct admin approval. The third migration adds admin-issued test balance credits with an audit trail; these are not real funds. The fourth migration makes deposit verification atomically add the corresponding test balance credit and records both actions in the audit log; verifying a receipt does not process a real payment. The fifth migration cleans up balance wording in existing audit and credit records. The sixth migration adds persistent investments; each investment atomically debits test balance, records the position and updates project funding progress. Admin valuation updates also update portfolio values. No migration connects a payment provider or processes real funds.
 
 ### Run locally
 
@@ -148,6 +148,30 @@ Then open:
 ```bash
 npm run build
 ```
+
+### Run with Docker
+
+Install and start Docker Desktop, then run these commands from the project directory:
+
+```bash
+docker compose up --build
+```
+
+Open http://localhost:5173. The development container mounts the project directory, so source changes are picked up by Vite. Stop it with `Ctrl+C` (or run `docker compose down` in another terminal).
+
+To build and serve the production app instead:
+
+```bash
+docker compose --profile production up --build web
+```
+
+Open http://localhost:8080. If you use Supabase, pass the browser-safe values from `.env.local` to Compose when building the production image:
+
+```bash
+docker compose --env-file .env.local --profile production up --build web
+```
+
+Only `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` belong in the frontend image. Never pass a Supabase service-role key as a build argument.
 
 ## Demo access
 

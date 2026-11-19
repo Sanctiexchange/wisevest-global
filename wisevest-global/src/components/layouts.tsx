@@ -115,7 +115,7 @@ export function ClientLayout() {
   const banner =
     isSupabaseConfigured ? (
       <div className="mb-5 rounded-xl border border-amber/30 bg-amber/10 p-4 text-sm text-amber">
-        KYC documents and deposit/withdrawal requests are stored for manual review. This prototype does not process payments, change balances, or execute payouts.
+        Deposit and withdrawal requests are reviewed manually. Admin balance credits are test funds only; this prototype does not process payments or execute payouts.
       </div>
     ) : user.kyc === 'approved' ? null : (
       <div className="mb-5 rounded-xl border border-amber/30 bg-amber/10 p-4 text-sm text-amber">
@@ -204,7 +204,7 @@ export function AdminLayout() {
     <Shell items={items} role={user.role === 'super_admin' ? 'Super admin console' : 'Admin console'} extra={extra}>
       {isSupabaseConfigured && (
         <div className="mb-5 rounded-xl border border-amber/30 bg-amber/10 p-4 text-sm text-amber" role="status">
-          Financial requests and KYC reviews are stored for manual review only. Verifying a deposit does not credit a balance, and approving a withdrawal does not send funds.
+          Financial requests and KYC reviews are stored for manual review. Admin balance credits are test funds; verifying a deposit or approving a withdrawal does not move real funds.
         </div>
       )}
       {loadError && <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger" role="alert">{loadError}</div>}

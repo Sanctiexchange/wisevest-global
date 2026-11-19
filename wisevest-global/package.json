@@ -14,6 +14,8 @@
     "@supabase/supabase-js": "^2.57.0",
     "antd": "^6.7.0",
     "dayjs": "^1.11.23",
+    "dotenv": "^18.0.10",
+    "postgres": "^4.1.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-router-dom": "6.28.0",

@@ -47,7 +47,7 @@ export interface Investment {
   date: string
 }
 
-export type TxType = 'Deposit' | 'Withdrawal' | 'Investment'
+export type TxType = 'Deposit' | 'Withdrawal' | 'Investment' | 'Adjustment'
 export interface Tx {
   id: string
   date: string

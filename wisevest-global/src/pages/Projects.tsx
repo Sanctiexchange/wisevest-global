@@ -123,7 +123,6 @@ export function ProjectDetail() {
   const amt = parseAmount(amount || String(p.minInvest))
 
   const start = () => {
-    if (isSupabaseConfigured) return setErr('Investments are not connected to the backend yet.')
     if (!user) return navigate('/login')
     if (user.role !== 'client') return setErr('Sign in with an investor account to invest.')
     if (user.kyc !== 'approved') return setErr('Complete identity verification before you invest.')
@@ -139,8 +138,9 @@ export function ProjectDetail() {
       <Field label="Amount (USD)" htmlFor="amt" error={err}>
         <input id="amt" inputMode="decimal" className="input" placeholder={String(p.minInvest)} value={amount} onChange={(e) => setAmount(e.target.value)} />
       </Field>
-      <div className="fine">{user?.role === 'client' ? `Available: ${money(cash)} · ` : ''}Minimum: {money(p.minInvest)}</div>
+      <div className="fine">{user?.role === 'client' ? `${isSupabaseConfigured ? 'Test balance' : 'Available'}: ${money(cash)} · ` : ''}Minimum: {money(p.minInvest)}</div>
       <Scenarios amount={amt} />
+      {isSupabaseConfigured && <p className="fine">Investments use test balance only; no payment is processed.</p>}
       <Button block onClick={start}>{user ? 'Continue' : 'Sign in to invest'}</Button>
       {user?.role === 'client' && cash < p.minInvest && <Link to="/app/deposit" className="mt-3 block text-center text-sm text-neon">Deposit funds</Link>}
     </div>
@@ -221,6 +221,7 @@ function InvestModal({ open, onClose, project: p, amount }: { open: boolean; onC
           <div className="mx-auto mb-4 grid h-[72px] w-[72px] place-items-center rounded-full bg-brand text-3xl text-[#05050a] shadow-glow">✓</div>
           <h2 className="text-xl font-bold">Investment confirmed</h2>
           <p className="mt-2 text-muted">{money(amount)} in {p.name} is confirmed. It now shows in your dashboard.</p>
+          {isSupabaseConfigured && <p className="fine mt-2">Test balance only; no payment was processed.</p>}
           <div className="fine">Reference: {ref}</div>
           <Button block onClick={() => { close(); navigate('/app/investments') }}>View my investments</Button>
         </div>
@@ -228,7 +229,7 @@ function InvestModal({ open, onClose, project: p, amount }: { open: boolean; onC
         <>
           <h2 className="text-xl font-bold">Review your investment</h2>
           <dl className="mt-3 rounded-2xl border border-line bg-bg px-4 py-1 text-sm">
-            {[['Project', p.name], ['Amount', money(amount)], ['Term', p.term], ['Fees', p.fees], ['Exit', p.exit], ['Paid from', 'Available balance']].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-line py-2.5 last:border-0"><dt className="text-muted">{k}</dt><dd className="max-w-[60%] text-right">{v}</dd></div>)}
+            {[['Project', p.name], ['Amount', money(amount)], ['Term', p.term], ['Fees', p.fees], ['Exit', p.exit], ['Paid from', isSupabaseConfigured ? 'Test balance' : 'Available balance']].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-line py-2.5 last:border-0"><dt className="text-muted">{k}</dt><dd className="max-w-[60%] text-right">{v}</dd></div>)}
           </dl>
           {statements.map((s, i) => <Check key={s} checked={c[i]} onChange={(v) => setC(c.map((x, j) => (j === i ? v : x)))}>{s}</Check>)}
           <div className="err" role="alert">{err}</div>

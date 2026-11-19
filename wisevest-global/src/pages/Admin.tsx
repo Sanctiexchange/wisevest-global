@@ -95,7 +95,7 @@ export function AdminOverview() {
         <h2 className="mb-1 text-lg font-bold">Needs attention</h2>
         {stats[0][1] > 0 && <Row actions={<Link to="/admin/kyc" className="rounded-full border border-line px-4 py-2 text-sm">Open queue</Link>}><b>{stats[0][1]} identity checks waiting</b><div className="fine">Review submitted documents and record a decision.</div></Row>}
         {big > 0 && <Row actions={<Link to="/admin/withdrawals" className="rounded-full border border-line px-4 py-2 text-sm">Review</Link>}><b>{big} large withdrawal needs dual approval</b><div className="fine">Over {money(DUAL_APPROVAL_THRESHOLD)}.</div></Row>}
-        {stats[2][1] > 0 && <Row actions={<Link to="/admin/deposits" className="rounded-full border border-line px-4 py-2 text-sm">Review</Link>}><b>{stats[2][1]} deposit requests awaiting review</b><div className="fine">Verify receipts outside this app before recording a decision.</div></Row>}
+        {stats[2][1] > 0 && <Row actions={<Link to="/admin/deposits" className="rounded-full border border-line px-4 py-2 text-sm">Review</Link>}><b>{stats[2][1]} deposit requests awaiting review</b><div className="fine">Verify receipts independently; verification adds test balance only.</div></Row>}
         {stats[0][1] + stats[2][1] + big === 0 && <Empty>Nothing waiting. All caught up.</Empty>}
       </div>
     </>
@@ -105,9 +105,15 @@ export function AdminOverview() {
 export function AdminUsers() {
   const users = useStore((state) => state.users)
   const currentUser = useStore((state) => state.user)
+  const balances = useStore((state) => state.balances)
   const { open, modal } = useAsk()
   const toast = useToast()
   const [search, setSearch] = useState('')
+  const [creditTargetId, setCreditTargetId] = useState<string | null>(null)
+  const [creditAmount, setCreditAmount] = useState('')
+  const [creditReason, setCreditReason] = useState('')
+  const [creditError, setCreditError] = useState('')
+  const [creditBusy, setCreditBusy] = useState(false)
   const query = search.trim().toLowerCase()
   const visibleUsers = useMemo(
     () => users.filter((user) => [user.name, user.email, user.role, user.kyc].some((value) => value.toLowerCase().includes(query))),
@@ -123,9 +129,32 @@ export function AdminUsers() {
     }
   }
 
+  const closeCredit = () => {
+    setCreditTargetId(null)
+    setCreditAmount('')
+    setCreditReason('')
+    setCreditError('')
+  }
+
+  const submitCredit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!creditTargetId) return
+    setCreditBusy(true)
+    setCreditError('')
+    try {
+      await admin.simulateBalanceCredit(creditTargetId, parseAmount(creditAmount), creditReason)
+      toast('Test balance credit recorded.')
+      closeCredit()
+    } catch (issue) {
+      setCreditError(issue instanceof ApiError ? issue.message : 'Could not add the test credit.')
+    } finally {
+      setCreditBusy(false)
+    }
+  }
+
   return (
     <>
-      <PageTitle title="Users" sub="Account access and roles are controlled by server-side policies." />
+      <PageTitle title="Users" sub="Balance credits are test funds only and are recorded in the audit log." />
       <div className="mb-3 flex flex-wrap gap-2">
         <input
           type="search"
@@ -157,6 +186,20 @@ export function AdminUsers() {
                 </select>
               )}
               {user.role === 'super_admin' && <Tag tone="ok">Owner-managed super admin</Tag>}
+              {user.role === 'client' && accountStatus === 'active' && (
+                <Button
+                  variant="ghost"
+                  className={small}
+                  onClick={() => {
+                    setCreditTargetId(user.id)
+                    setCreditAmount('')
+                    setCreditReason('')
+                    setCreditError('')
+                  }}
+                >
+                  Add test credit
+                </Button>
+              )}
               {!self && (
                 <Button
                   variant={accountStatus === 'active' ? 'danger' : 'ghost'}
@@ -176,6 +219,7 @@ export function AdminUsers() {
             </>}>
               <b>{user.name || 'Name not provided'}{self ? ' (you)' : ''}</b>
               <div className="fine">{user.email} · {user.id}</div>
+              {user.role === 'client' && <div className="fine">Test balance: <b className="text-ink">{money(balances[user.id] ?? 0, 2)}</b></div>}
               <Tag tone={user.role === 'client' ? 'default' : 'ok'}>{user.role.replace('_', ' ')}</Tag>
               <Tag tone={accountStatus === 'active' ? 'ok' : 'bad'}>{accountStatus}</Tag>
               <Tag tone={user.kyc === 'approved' ? 'ok' : user.kyc === 'rejected' ? 'bad' : 'warn'}>KYC: {user.kyc.replace(/_/g, ' ')}</Tag>
@@ -184,6 +228,42 @@ export function AdminUsers() {
         })}
       </div>
       {modal}
+      <Modal open={!!creditTargetId} onClose={closeCredit}>
+        <h2 className="text-xl font-bold">Add test balance credit</h2>
+        <p className="mt-2 text-sm text-muted">
+          This adds test-only balance and does not represent a payment or real funds. The credit and reason are recorded in the audit log.
+        </p>
+        <form className="mt-3" onSubmit={(event) => { void submitCredit(event) }}>
+          <Field label="Amount (USD)" htmlFor="test-credit-amount">
+            <input
+              id="test-credit-amount"
+              type="number"
+              min="0.01"
+              max="999999999999.99"
+              step="0.01"
+              required
+              className="input"
+              value={creditAmount}
+              onChange={(event) => setCreditAmount(event.target.value)}
+            />
+          </Field>
+          <Field label="Reason (required)" htmlFor="test-credit-reason" error={creditError}>
+            <textarea
+              id="test-credit-reason"
+              className="input min-h-[80px]"
+              minLength={5}
+              maxLength={500}
+              required
+              value={creditReason}
+              onChange={(event) => setCreditReason(event.target.value)}
+            />
+          </Field>
+          <div className="mt-3 flex gap-2.5">
+            <Button type="submit" loading={creditBusy}>Add test credit</Button>
+            <Button type="button" variant="ghost" onClick={closeCredit}>Cancel</Button>
+          </div>
+        </form>
+      </Modal>
     </>
   )
 }
@@ -294,20 +374,62 @@ export function AdminWithdrawals() {
 export function AdminDeposits() {
   const list = useStore((s) => s.deposits)
   const { open, modal } = useAsk()
+  const toast = useToast()
+  const advanceConfirmation = async (id: string) => {
+    try {
+      await admin.advanceConfirmation(id)
+      toast('Test confirmation added.')
+    } catch (issue) {
+      toast(issue instanceof ApiError ? issue.message : 'Could not add a test confirmation.')
+    }
+  }
   return (
     <>
-      <PageTitle title="Deposit requests" sub="Verify receipts manually; verification does not credit a wallet balance." />
+      <PageTitle title="Deposit requests" sub="Verifying a Supabase deposit adds test balance only. Demo deposits use test confirmations." />
       <div className="card">
         {list.length === 0 && <Empty>No deposit requests.</Empty>}
         {list.map((d) => (
-            <Row key={d.id} actions={d.status === 'pending' && (<>
-              <Button className={small} onClick={() => open({ title: `Verify ${money(d.amount)} ${d.method}?`, text: 'Confirm the external receipt independently. This records verification but does not credit a balance.', run: () => admin.reviewDeposit(d.id, 'verified') })}>Verify receipt</Button>
-              <Button variant="danger" className={small} onClick={() => open({ title: `Reject deposit request ${d.id}?`, text: 'Provide a reason for the audit log.', reason: true, run: (reason) => admin.reviewDeposit(d.id, 'rejected', reason) })}>Reject</Button>
-            </>)}>
+            <Row key={d.id} actions={<>
+              {d.status === 'pending' && <>
+                <Button className={small} onClick={() => open({
+                  title: d.needed === undefined ? `Verify and credit ${money(d.amount)} ${d.method}?` : `Verify ${money(d.amount)} ${d.method}?`,
+                  text: d.needed === undefined
+                    ? 'Confirm the external receipt independently. This records verification and adds test balance atomically; it does not represent real funds.'
+                    : 'Confirm the external receipt independently. This records verification; the demo balance can be credited after test confirmations.',
+                  run: () => admin.reviewDeposit(d.id, 'verified'),
+                })}>{d.needed === undefined ? 'Verify & credit test balance' : 'Verify receipt'}</Button>
+                <Button variant="danger" className={small} onClick={() => open({ title: `Reject deposit request ${d.id}?`, text: 'Provide a reason for the audit log.', reason: true, run: (reason) => admin.reviewDeposit(d.id, 'rejected', reason) })}>Reject</Button>
+              </>}
+              {d.needed !== undefined && d.status !== 'credited' && d.status !== 'rejected' && (
+                <Button
+                  variant="ghost"
+                  className={small}
+                  disabled={(d.confirmations ?? 0) >= d.needed}
+                  onClick={() => { void advanceConfirmation(d.id) }}
+                >
+                  Add test confirmation
+                </Button>
+              )}
+              {d.needed !== undefined && d.status === 'verified' && (d.confirmations ?? 0) >= d.needed && (
+                <Button
+                  className={small}
+                  onClick={() => open({
+                    title: `Credit ${money(d.amount)} to the test balance?`,
+                    text: 'This test credit is not a payment and does not represent real funds.',
+                    run: () => admin.creditDeposit(d.id),
+                  })}
+                >
+                  Credit test balance
+                </Button>
+              )}
+            </>}>
               <b>{money(d.amount)} · {d.method} · {d.id}</b>
               <div className="fine">{d.userName} · Account {d.userId}</div>
               <div className="fine">External reference: {d.externalReference ?? 'Demo request'}</div>
-              <Tag tone={d.status === 'verified' || d.status === 'credited' ? 'ok' : d.status === 'rejected' ? 'bad' : 'warn'}>{d.status}</Tag>
+              {d.needed !== undefined && <div className="fine">Test confirmations: {d.confirmations ?? 0}/{d.needed}</div>}
+              <Tag tone={d.status === 'verified' || d.status === 'credited' ? 'ok' : d.status === 'rejected' ? 'bad' : 'warn'}>
+                {d.status === 'verified' && d.needed === undefined ? 'verified · test balance credited' : d.status}
+              </Tag>
               {d.reviewReason && <div className="fine">Review note: {d.reviewReason}</div>}
             </Row>
         ))}

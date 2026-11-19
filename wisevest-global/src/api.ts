@@ -2,15 +2,17 @@ import { useStore, type DB } from './store'
 import { DEMO_USER_ID, seedInvestments, seedTxs } from './lib/seed'
 import { DUAL_APPROVAL_THRESHOLD, type AuditEntry, type Deposit, type DisputeReason, type KycCase, type KycDocuments, type Method, type NewProject, type Project, type SupportRequest, type TransactionDispute, type Tx, type User, type Withdrawal } from './lib/types'
 import { MINIMUM_DEPOSIT, MINIMUM_WITHDRAWAL } from './lib/settings'
-import { today, uid } from './lib/format'
+import { money, today, uid } from './lib/format'
 import {
   isSupabaseConfigured,
   supabase,
   type AuditEventRow,
   type DepositRequestRow,
+  type InvestmentRow,
   type KycCaseRow,
   type ProfileRow,
   type ProjectRow,
+  type SimulatedBalanceCreditRow,
   type WithdrawalRequestRow,
 } from './lib/supabase'
 import type { Session } from '@supabase/supabase-js'
@@ -22,6 +24,14 @@ const get = () => useStore.getState()
 const set = (p: Partial<DB> | ((s: DB) => Partial<DB>)) => useStore.setState(p as never)
 const normalizeEmail = (email: string) => email.trim().toLowerCase()
 const normalizeFullName = (name: string) => name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase()
+function parseFundingGoal(value: string): number | null {
+  const match = /^\$?\s*([\d,]+(?:\.\d+)?)\s*([KMB])?$/i.exec(value.trim())
+  if (!match) return null
+  const amount = Number(match[1].replace(/,/g, ''))
+  const multiplier = { K: 1_000, M: 1_000_000, B: 1_000_000_000 }[match[2]?.toUpperCase() ?? ''] ?? 1
+  const goal = Math.round(amount * multiplier * 100) / 100
+  return Number.isFinite(goal) && goal > 0 && goal <= 999999999999.99 ? goal : null
+}
 
 function log(action: string, reason = '—') {
   const entry = {
@@ -84,8 +94,15 @@ async function setBackendUser(session: Session, isCurrent: () => boolean = () =>
 
   const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors()
   if (factorsError) throw new ApiError(`Could not load your security settings: ${factorsError.message}`)
+  const { data: walletBalance, error: walletBalanceError } = await supabase
+    .from('simulated_wallet_balances')
+    .select('balance')
+    .eq('user_id', session.user.id)
+    .maybeSingle()
+  if (walletBalanceError) throw new ApiError(`Could not load your test balance: ${walletBalanceError.message}`)
   if (!isCurrent()) return
   const metadata = session.user.user_metadata
+  const balance = walletBalance ? Number(walletBalance.balance) : 0
   const user: User = {
     id: session.user.id,
     name: profile.full_name || (typeof metadata.full_name === 'string' ? metadata.full_name : ''),
@@ -99,8 +116,8 @@ async function setBackendUser(session: Session, isCurrent: () => boolean = () =>
     user,
     users: [user],
     credentials: [],
-    cash: 0,
-    balances: { [user.id]: 0 },
+    cash: balance,
+    balances: { [user.id]: balance },
     investments: [],
     txs: [],
     kycDocuments: {},
@@ -202,8 +219,8 @@ function auditFromRow(row: AuditEventRow): AuditEntry {
     id: String(row.id),
     time: new Date(row.created_at).toLocaleString('en-GB', { hour12: false }),
     actor: row.actor_email || row.actor_id || 'System',
-    action: row.action,
-    reason: row.reason || '—',
+    action: row.action.replace(/simulated/gi, 'test'),
+    reason: row.reason.replace(/simulated/gi, 'test') || '—',
   }
 }
 
@@ -519,18 +536,44 @@ export const wallet = {
   async loadOwnRequests() {
     if (!supabase) return
     const user = requireUser()
-    const [depositsResult, withdrawalsResult] = await Promise.all([
+    const [depositsResult, withdrawalsResult, creditsResult, balanceResult, investmentsResult] = await Promise.all([
       supabase.from('deposit_requests').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase.from('withdrawal_requests').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+      supabase.from('simulated_balance_credits').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+      supabase.from('simulated_wallet_balances').select('balance').eq('user_id', user.id).maybeSingle(),
+      supabase.from('investments').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
     ])
     if (depositsResult.error) throw new ApiError(`Could not load deposit history: ${depositsResult.error.message}`)
     if (withdrawalsResult.error) throw new ApiError(`Could not load withdrawal history: ${withdrawalsResult.error.message}`)
+    if (creditsResult.error) throw new ApiError(`Could not load test balance history: ${creditsResult.error.message}`)
+    if (balanceResult.error) throw new ApiError(`Could not load your test balance: ${balanceResult.error.message}`)
+    if (investmentsResult.error) throw new ApiError(`Could not load your investments: ${investmentsResult.error.message}`)
+
+    const investmentRows: InvestmentRow[] = investmentsResult.data
+    const portfolioProjectIds = [...new Set(investmentRows.map((investment) => investment.project_id))]
+    let portfolioProjects: Project[] = []
+    if (portfolioProjectIds.length > 0) {
+      const { data, error } = await supabase.from('projects').select('*').in('id', portfolioProjectIds)
+      if (error) throw new ApiError(`Could not load projects in your portfolio: ${error.message}`)
+      portfolioProjects = data.map(projectFromRow)
+      if (portfolioProjects.length !== portfolioProjectIds.length)
+        throw new ApiError('Could not load one or more projects in your portfolio.')
+    }
 
     const users = new Map([[user.id, user]])
+    const portfolioProjectsById = new Map(portfolioProjects.map((project) => [project.id, project]))
     const deposits = depositsResult.data.map((row) => depositFromRow(row, users))
     const withdrawals = withdrawalsResult.data.map((row) => withdrawalFromRow(row, users))
+    const credits: SimulatedBalanceCreditRow[] = creditsResult.data
+    const investments = investmentRows.map((investment) => ({
+      id: investment.id,
+      projectId: investment.project_id,
+      amount: Number(investment.amount),
+      value: Number(investment.value),
+      date: investment.created_at.slice(0, 10),
+    }))
     const transactions: Tx[] = [
-      ...deposits.map((deposit) => ({
+      ...deposits.filter((deposit) => deposit.status !== 'verified').map((deposit) => ({
         id: deposit.id,
         date: deposit.createdAt?.slice(0, 10) ?? today(),
         type: 'Deposit' as const,
@@ -546,8 +589,33 @@ export const wallet = {
         amount: -withdrawal.amount,
         status: withdrawal.status === 'approved' ? 'Completed' as const : withdrawal.status === 'rejected' ? 'Rejected' as const : 'Pending' as const,
       })),
+      ...credits.map((credit) => ({
+        id: credit.id,
+        date: credit.created_at.slice(0, 10),
+        type: 'Adjustment' as const,
+        detail: `Admin test credit — ${credit.reason.replace(/simulated/gi, 'test')}`,
+        amount: Number(credit.amount),
+        status: 'Completed' as const,
+      })),
+      ...investmentRows.map((investment) => ({
+        id: investment.id,
+        date: investment.created_at.slice(0, 10),
+        type: 'Investment' as const,
+        detail: portfolioProjectsById.get(investment.project_id)?.name ?? investment.project_id,
+        amount: -Number(investment.amount),
+        status: 'Completed' as const,
+      })),
     ].sort((a, b) => b.date.localeCompare(a.date))
-    set({ deposits, withdrawals, txs: transactions })
+    const balance = balanceResult.data ? Number(balanceResult.data.balance) : 0
+    set((state) => ({
+      deposits,
+      withdrawals,
+      investments,
+      txs: transactions,
+      cash: state.user?.id === user.id ? balance : state.cash,
+      balances: { ...state.balances, [user.id]: balance },
+      projects: [...new Map([...state.projects, ...portfolioProjects].map((project) => [project.id, project])).values()],
+    }))
   },
   async logDispute(transactionId: string, reason: DisputeReason, description: string) {
     await wait()
@@ -635,6 +703,18 @@ export const wallet = {
   },
   async invest(projectId: string, amount: number) {
     await wait(350)
+    if (supabase) {
+      const user = requireApproved()
+      if (user.role !== 'client') throw new ApiError('Sign in with an investor account to invest.')
+      const { data, error } = await supabase.rpc('invest_in_project', {
+        p_project_id: projectId,
+        p_amount: amount,
+      })
+      if (error) throw new ApiError(error.message)
+      if (!data) throw new ApiError('Investment was not recorded.')
+      await wallet.loadOwnRequests()
+      return data
+    }
     requireMockMode()
     requireApproved()
     const p = get().projects.find((x) => x.id === projectId)
@@ -679,13 +759,14 @@ export const support = {
 export const admin = {
   async loadConsole() {
     if (!supabase) return
-    const [profilesResult, casesResult, depositsResult, withdrawalsResult, auditResult, projectsResult] = await Promise.all([
+    const [profilesResult, casesResult, depositsResult, withdrawalsResult, auditResult, projectsResult, balancesResult] = await Promise.all([
       supabase.from('profiles').select('*').order('created_at', { ascending: false }),
       supabase.from('kyc_cases').select('*').order('created_at', { ascending: false }),
       supabase.from('deposit_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('withdrawal_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('audit_events').select('*').order('created_at', { ascending: false }).limit(500),
       supabase.from('projects').select('*').order('name'),
+      supabase.from('simulated_wallet_balances').select('user_id,balance'),
     ])
     if (profilesResult.error) throw new ApiError(`Could not load users: ${profilesResult.error.message}`)
     if (casesResult.error) throw new ApiError(`Could not load KYC cases: ${casesResult.error.message}`)
@@ -693,14 +774,21 @@ export const admin = {
     if (withdrawalsResult.error) throw new ApiError(`Could not load withdrawal requests: ${withdrawalsResult.error.message}`)
     if (auditResult.error) throw new ApiError(`Could not load the audit log: ${auditResult.error.message}`)
     if (projectsResult.error) throw new ApiError(`Could not load projects: ${projectsResult.error.message}`)
+    if (balancesResult.error) throw new ApiError(`Could not load test balances: ${balancesResult.error.message}`)
 
     const currentUser = get().user
+    const balances = balancesResult.data.reduce<Record<string, number>>((result, row) => {
+      result[row.user_id] = Number(row.balance)
+      return result
+    }, {})
     const users = profilesResult.data.map((row) => userFromProfile(row, row.id === currentUser?.id ? currentUser.twoFa : false))
     const usersById = new Map(users.map((user) => [user.id, user]))
     const refreshedUser = currentUser ? usersById.get(currentUser.id) : undefined
     set({
       users,
       user: currentUser && refreshedUser ? { ...refreshedUser, twoFa: currentUser.twoFa } : currentUser,
+      cash: currentUser ? balances[currentUser.id] ?? 0 : 0,
+      balances,
       kycCases: casesResult.data.map(kycFromRow),
       deposits: depositsResult.data.map((row) => depositFromRow(row, usersById)),
       withdrawals: withdrawalsResult.data.map((row) => withdrawalFromRow(row, usersById)),
@@ -710,6 +798,35 @@ export const admin = {
   },
   setActor(actor: string) {
     set({ adminActor: actor })
+  },
+  async simulateBalanceCredit(userId: string, amount: number, reason: string) {
+    requireAdmin()
+    const target = get().users.find((user) => user.id === userId)
+    if (!target || target.role !== 'client') throw new ApiError('Choose a client account.')
+    if (target.accountStatus === 'suspended') throw new ApiError('Reactivate this account before adding a test credit.')
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 999999999999.99 || Math.round(amount * 100) / 100 !== amount)
+      throw new ApiError('Enter a positive amount with no more than two decimal places.')
+    if (reason.trim().length < 5 || reason.trim().length > 500)
+      throw new ApiError('Give a reason between 5 and 500 characters.')
+
+    if (supabase) {
+      const { error } = await supabase.rpc('admin_simulate_balance_credit', {
+        p_user_id: userId,
+        p_amount: amount,
+        p_reason: reason.trim(),
+      })
+      if (error) throw new ApiError(error.message)
+      await admin.loadConsole()
+      return
+    }
+
+    requireMockMode()
+    const nextBalance = getBalance(userId) + amount
+    set((state) => ({
+      cash: state.user?.id === userId ? nextBalance : state.cash,
+      balances: { ...state.balances, [userId]: nextBalance },
+    }))
+    log(`Test balance credit for ${target.email}`, `${money(amount, 2)} — ${reason.trim()}`)
   },
   async setUserRole(userId: string, role: 'client' | 'admin') {
     if (supabase) {
@@ -758,6 +875,8 @@ export const admin = {
       throw new ApiError('Add at least one risk with a title and description, and complete every risk.')
 
     if (supabase) {
+      const fundingGoal = parseFundingGoal(input.goal)
+      if (!fundingGoal) throw new ApiError('Enter a funding goal as an amount, such as $2.0M.')
       const { data, error } = await supabase.from('projects').insert({
         name,
         category: input.category,
@@ -768,6 +887,7 @@ export const admin = {
         target_return: input.targetReturn,
         raised_pct: 0,
         goal: input.goal,
+        funding_goal: fundingGoal,
         fees: input.fees,
         exit_terms: input.exit,
         description: input.description,
@@ -869,6 +989,12 @@ export const admin = {
     await wait(120)
     requireMockMode()
     requireAdmin()
+    const deposit = get().deposits.find((item) => item.id === id)
+    if (!deposit) throw new ApiError('Deposit not found.')
+    if (deposit.status !== 'pending' && deposit.status !== 'verified')
+      throw new ApiError('Only pending or verified deposits can receive test confirmations.')
+    if ((deposit.confirmations ?? 0) >= (deposit.needed ?? 0))
+      throw new ApiError('This deposit already has the required confirmations.')
     set((s) => ({ deposits: s.deposits.map((d) => (d.id === id && (d.confirmations ?? 0) < (d.needed ?? 0) ? { ...d, confirmations: (d.confirmations ?? 0) + 1 } : d)) }))
   },
   async creditDeposit(id: string) {
@@ -878,6 +1004,7 @@ export const admin = {
     const d = get().deposits.find((x) => x.id === id)
     if (!d) throw new ApiError('Deposit not found.')
     if (d.status === 'credited') throw new ApiError('This deposit has already been credited.')
+    if (d.status !== 'verified') throw new ApiError('Verify the deposit receipt before crediting the test balance.')
     if (!d.userId) throw new ApiError('This deposit is not linked to a client account.')
     if ((d.confirmations ?? 0) < (d.needed ?? 0)) throw new ApiError('Wait for the required confirmations before crediting.')
     if (!Number.isFinite(d.amount) || d.amount <= 0) throw new ApiError('Deposit amount must be greater than zero.')
@@ -889,7 +1016,7 @@ export const admin = {
       balances: { ...s.balances, [userId]: balance + d.amount },
     }))
     patchTx(d.txId, { status: 'Completed' })
-    log(`Credited deposit ${id}`)
+    log(`Test credit for deposit ${id}`)
   },
   async reviewWithdrawal(id: string, decision: 'approve' | 'reject', reason = '') {
     await wait()
