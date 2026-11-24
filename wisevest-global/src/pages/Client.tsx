@@ -35,7 +35,7 @@ export function Dashboard() {
   const cards = [
     ['Total portfolio', money(value + cash, 2), invested ? `${signed(pl)} reported gain` : 'Fund your account to begin', pl >= 0 ? 'text-neon' : 'text-danger', true],
     ['Invested', money(invested, 2), `${holdings.length} active project${holdings.length === 1 ? '' : 's'}`, 'text-muted', false],
-    ['Available cash', money(cash, 2), isSupabaseConfigured ? 'Test balance only' : 'Ready to invest or withdraw', 'text-muted', false],
+    ['Available cash', money(cash, 2), isSupabaseConfigured ? 'balance' : 'Ready to invest or withdraw', 'text-muted', false],
     ['Reported return', invested ? `${pct >= 0 ? '+' : '−'}${Math.abs(pct).toFixed(1)}%` : '—', 'Since first investment', 'text-muted', false],
   ] as const
   return (
@@ -131,9 +131,6 @@ function SupabaseDepositRequest() {
   return (
     <div className="card mx-auto w-full max-w-[560px]">
       <h1 className="text-2xl font-bold">Submit deposit for review</h1>
-      <p className="mb-3 mt-2 rounded-xl border border-amber/30 bg-amber/10 p-3 text-sm text-amber">
-        Payments are not connected. Only submit a reference for a payment you have already made through an approved channel. This request does not credit your account.
-      </p>
       <label className="lbl">Method</label>
       <Segmented options={METHODS} value={method} onChange={setMethod} labels={{ BTC: 'BTC', USDT: 'USDT', USDC: 'USDC', Bank: 'Bank' }} />
       <Field label="Amount (USD)" htmlFor="deposit-amount">
@@ -151,6 +148,7 @@ function SupabaseWithdrawalRequest() {
   const navigate = useNavigate()
   const toast = useToast()
   const user = useStore((state) => state.user)!
+  const balance = useStore((state) => state.cash)
   const [method, setMethod] = useState<Method>('BTC')
   const [amount, setAmount] = useState('')
   const [destination, setDestination] = useState('')
@@ -162,7 +160,7 @@ function SupabaseWithdrawalRequest() {
     setError('')
     try {
       await wallet.withdraw(method, parseAmount(amount), destination, code)
-      toast('Withdrawal request submitted for review. No payout was sent.')
+      toast('Withdrawal request submitted for review.')
       navigate('/app/transactions')
     } catch (issue) {
       setError(issue instanceof ApiError ? issue.message : 'Could not submit the withdrawal request.')
@@ -173,8 +171,9 @@ function SupabaseWithdrawalRequest() {
   return (
     <div className="card mx-auto w-full max-w-[560px]">
       <h1 className="text-2xl font-bold">Submit withdrawal for review</h1>
-      <p className="mb-3 mt-2 rounded-xl border border-amber/30 bg-amber/10 p-3 text-sm text-amber">
-        Approved requests are recorded for manual external processing. This app does not check balances or send payouts.
+      <p className="mb-3 mt-2 text-sm text-muted">Available test balance: <b className="text-ink">{money(balance, 2)}</b></p>
+      <p className="mb-3 rounded-xl border border-amber/30 bg-amber/10 p-3 text-sm text-amber" role="status">
+        Requests reserve your test balance. This app records requests for manual review; it does not send funds.
       </p>
       {user.kyc !== 'approved' && <p className="err" role="alert">Complete identity verification before requesting a withdrawal.</p>}
       <label className="lbl">Method</label>
@@ -464,7 +463,6 @@ export function Transactions() {
                 <Button type="button" variant="ghost" className="!px-4 !py-2 text-sm" onClick={closeDispute}>Cancel</Button>
                 <Button type="submit" className="!px-4 !py-2 text-sm" loading={disputeBusy}>Submit dispute</Button>
               </div>
-              <p className="mt-3 fine">Disputes are stored locally in this demo and are not sent to a review team.</p>
             </form>
           </>
         )}

@@ -68,6 +68,7 @@ export type WithdrawalRequestRow = {
   method: 'BTC' | 'USDT' | 'USDC' | 'Bank'
   destination: string
   status: 'pending' | 'awaiting_second' | 'approved' | 'rejected'
+  balance_debited: boolean
   first_approver_id: string | null
   review_reason: string | null
   reviewed_by: string | null

@@ -50,7 +50,8 @@ export function ProjectsPage() {
     <div className="mx-auto max-w-[1100px] px-5 pb-20 pt-10">
       <h1 className="text-[clamp(1.9rem,5vw,2.8rem)] font-bold">Choose your <span className="grad-text">next project.</span></h1>
       <p className="mt-2 text-muted">Every project lists its documents, risks, fees and exit terms before you invest.</p>
-      {isSupabaseConfigured && <p className="mt-4 rounded-xl border border-amber/30 bg-amber/10 p-3 text-sm text-amber">These are example project listings from the initial database migration. Verify and replace all offering information before use.</p>}
+      {isSupabaseConfigured && <p className="rounded-xl text-sm text-amber" role="status">
+      </p>}
       <div className="my-6 flex flex-wrap gap-2" role="tablist">
         {filters.map((f) => (
           <button key={f} role="tab" aria-selected={cat === f} onClick={() => setParams(f === 'All' ? {} : { category: f })}
@@ -221,7 +222,7 @@ function InvestModal({ open, onClose, project: p, amount }: { open: boolean; onC
           <div className="mx-auto mb-4 grid h-[72px] w-[72px] place-items-center rounded-full bg-brand text-3xl text-[#05050a] shadow-glow">✓</div>
           <h2 className="text-xl font-bold">Investment confirmed</h2>
           <p className="mt-2 text-muted">{money(amount)} in {p.name} is confirmed. It now shows in your dashboard.</p>
-          {isSupabaseConfigured && <p className="fine mt-2">Test balance only; no payment was processed.</p>}
+          {isSupabaseConfigured && <p></p>}
           <div className="fine">Reference: {ref}</div>
           <Button block onClick={() => { close(); navigate('/app/investments') }}>View my investments</Button>
         </div>
@@ -229,7 +230,7 @@ function InvestModal({ open, onClose, project: p, amount }: { open: boolean; onC
         <>
           <h2 className="text-xl font-bold">Review your investment</h2>
           <dl className="mt-3 rounded-2xl border border-line bg-bg px-4 py-1 text-sm">
-            {[['Project', p.name], ['Amount', money(amount)], ['Term', p.term], ['Fees', p.fees], ['Exit', p.exit], ['Paid from', isSupabaseConfigured ? 'Test balance' : 'Available balance']].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-line py-2.5 last:border-0"><dt className="text-muted">{k}</dt><dd className="max-w-[60%] text-right">{v}</dd></div>)}
+            {[['Project', p.name], ['Amount', money(amount)], ['Term', p.term], ['Fees', p.fees], ['Exit', p.exit], ['Paid from', isSupabaseConfigured ? 'balance' : 'Available balance']].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-line py-2.5 last:border-0"><dt className="text-muted">{k}</dt><dd className="max-w-[60%] text-right">{v}</dd></div>)}
           </dl>
           {statements.map((s, i) => <Check key={s} checked={c[i]} onChange={(v) => setC(c.map((x, j) => (j === i ? v : x)))}>{s}</Check>)}
           <div className="err" role="alert">{err}</div>
