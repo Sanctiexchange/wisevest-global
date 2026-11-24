@@ -110,7 +110,7 @@ begin
     raise exception 'This project is not open for investment.';
   end if;
   if p_amount < v_project.min_invest then
-    raise exception 'Investment is below the project minimum of $' || v_project.min_invest::text || '.';
+    raise exception 'Investment is below the project minimum of $%.', v_project.min_invest;
   end if;
   if v_project.funding_goal is null then
     raise exception 'This project does not have a valid funding goal configured.';
