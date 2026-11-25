@@ -172,9 +172,7 @@ function SupabaseWithdrawalRequest() {
     <div className="card mx-auto w-full max-w-[560px]">
       <h1 className="text-2xl font-bold">Submit withdrawal for review</h1>
       <p className="mb-3 mt-2 text-sm text-muted">Available test balance: <b className="text-ink">{money(balance, 2)}</b></p>
-      <p className="mb-3 rounded-xl border border-amber/30 bg-amber/10 p-3 text-sm text-amber" role="status">
-        Requests reserve your test balance. This app records requests for manual review; it does not send funds.
-      </p>
+
       {user.kyc !== 'approved' && <p className="err" role="alert">Complete identity verification before requesting a withdrawal.</p>}
       <label className="lbl">Method</label>
       <Segmented options={METHODS} value={method} onChange={setMethod} labels={{ BTC: 'BTC', USDT: 'USDT', USDC: 'USDC', Bank: 'Bank' }} />
