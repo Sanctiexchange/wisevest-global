@@ -19,7 +19,7 @@ export function Button({ variant = 'primary', block, loading, className, childre
       disabled={disabled || loading}
       className={cx(
         'inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-[0.92rem] font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0',
-        variant === 'primary' && 'bg-brand text-[#05050a] shadow-glow',
+        variant === 'primary' && 'bg-neon text-white shadow-glow',
         variant === 'ghost' && 'border border-line text-ink hover:border-violet',
         variant === 'danger' && 'border border-danger/45 text-danger',
         block && 'mt-5 w-full',
@@ -52,7 +52,7 @@ export const riskTone = (r: string) => (r === 'High' ? 'bad' : 'warn') as 'bad' 
 export function Progress({ value }: { value: number }) {
   return (
     <div className="h-2 overflow-hidden rounded-full bg-surface2" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={100}>
-      <div className="h-full bg-brand transition-all" style={{ width: `${value}%` }} />
+      <div className="h-full bg-neon transition-all" style={{ width: `${value}%` }} />
     </div>
   )
 }

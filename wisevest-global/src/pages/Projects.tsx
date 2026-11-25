@@ -48,7 +48,7 @@ export function ProjectsPage() {
 
   return (
     <div className="mx-auto max-w-[1100px] px-5 pb-20 pt-10">
-      <h1 className="text-[clamp(1.9rem,5vw,2.8rem)] font-bold">Choose your <span className="grad-text">next project.</span></h1>
+      <h1 className="text-[clamp(1.9rem,5vw,2.8rem)] font-bold">Choose your <span className="text-neon">next project.</span></h1>
       <p className="mt-2 text-muted">Every project lists its documents, risks, fees and exit terms before you invest.</p>
       {isSupabaseConfigured && <p className="rounded-xl text-sm text-amber" role="status">
       </p>}
@@ -219,7 +219,7 @@ function InvestModal({ open, onClose, project: p, amount }: { open: boolean; onC
     <Modal open={open} onClose={close}>
       {ref ? (
         <div className="text-center">
-          <div className="mx-auto mb-4 grid h-[72px] w-[72px] place-items-center rounded-full bg-brand text-3xl text-[#05050a] shadow-glow">✓</div>
+          <div className="mx-auto mb-4 grid h-[72px] w-[72px] place-items-center rounded-full bg-neon text-3xl text-white shadow-glow">✓</div>
           <h2 className="text-xl font-bold">Investment confirmed</h2>
           <p className="mt-2 text-muted">{money(amount)} in {p.name} is confirmed. It now shows in your dashboard.</p>
           {isSupabaseConfigured && <p></p>}

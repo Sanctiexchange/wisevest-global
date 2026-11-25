@@ -11,6 +11,7 @@ export default {
         ink: '#101828',
         muted: '#6B7280',
         neon: '#0F3D33',
+        'brand-soft': 'rgba(15,61,51,.08)',
         violet: '#0B322A',
         orchid: '#0F3D33',
         danger: '#B4233C',
@@ -19,10 +20,6 @@ export default {
       fontFamily: {
         head: ['Inter', 'system-ui', '-apple-system', '"Segoe UI"', 'sans-serif'],
         body: ['Inter', 'system-ui', '-apple-system', '"Segoe UI"', 'sans-serif'],
-      },
-      backgroundImage: {
-        brand: 'linear-gradient(135deg,#0F3D33,#BBEC04)',
-        'brand-soft': 'linear-gradient(135deg,rgba(15,61,51,.08),rgba(187,236,4,.16))',
       },
       boxShadow: { glow: '0 4px 18px rgba(15,61,51,.16)' },
       borderRadius: { xl2: '16px' },

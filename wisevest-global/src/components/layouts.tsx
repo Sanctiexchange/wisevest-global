@@ -22,7 +22,7 @@ export function PublicLayout() {
             <a href="/#calculator" className="hover:text-ink">Calculator</a>
             <a href="/#how" className="hover:text-ink">How it works</a>
             <a href="/#trust" className="hover:text-ink">Trust and risk</a>
-            <Link to={home} className="rounded-full bg-brand px-5 py-2.5 text-center font-semibold text-[#05050a] shadow-glow">{user ? 'Open dashboard' : 'Sign in'}</Link>
+            <Link to={home} className="rounded-full bg-neon px-5 py-2.5 text-center font-semibold text-white shadow-glow">{user ? 'Open dashboard' : 'Sign in'}</Link>
           </div>
         </div>
       </nav>
@@ -156,7 +156,7 @@ export function AdminLayout() {
           </p>
           <button
             type="button"
-            className="mt-5 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-[#05050a] shadow-glow"
+            className="mt-5 rounded-full bg-neon px-6 py-3 text-sm font-semibold text-white shadow-glow"
             onClick={async () => {
               try {
                 await auth.logout()

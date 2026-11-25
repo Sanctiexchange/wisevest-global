@@ -56,7 +56,7 @@ export default function SupportModal() {
       <Modal open={open} onClose={close}>
         {requestId ? (
           <div className="text-center">
-            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-brand text-2xl text-[#05050a]">✓</div>
+            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-neon text-2xl text-white">✓</div>
             <h2 className="text-xl font-bold">Request submitted</h2>
             <p className="mt-2 text-sm text-muted">Your message has been saved in this demo.</p>
             <p className="mt-2 text-xs text-muted">Reference: {requestId}</p>

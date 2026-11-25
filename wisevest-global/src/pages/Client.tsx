@@ -62,7 +62,7 @@ export function Dashboard() {
         </div>
       )}
       <div className="mt-4 flex flex-wrap gap-2.5">
-        <Link to="/app/deposit" className="rounded-full bg-brand px-6 py-3 text-sm font-semibold text-[#05050a] shadow-glow">Deposit funds</Link>
+        <Link to="/app/deposit" className="rounded-full bg-neon px-6 py-3 text-sm font-semibold text-white shadow-glow">Deposit funds</Link>
         <Link to="/app/investments" className="rounded-full border border-line px-6 py-3 text-sm font-semibold">View investments</Link>
       </div>
       <RiskNotice className="mt-6" />
@@ -423,7 +423,7 @@ export function Transactions() {
       <Modal open={!!selectedTransaction} onClose={closeDispute}>
         {disputeSubmitted ? (
           <div className="text-center">
-            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-brand text-2xl text-[#05050a]">✓</div>
+            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-neon text-2xl text-white">✓</div>
             <h2 className="text-xl font-bold">Dispute logged</h2>
             <p className="mt-2 text-sm text-muted">Your report for transaction {selectedTransaction?.id} is saved and marked for review.</p>
             <Button block onClick={closeDispute}>Done</Button>

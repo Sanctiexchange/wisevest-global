@@ -216,7 +216,7 @@ function DemoRegister() {
   const meter = ['#ff6b8a', '#ffb454', '#c084fc', '#39ff88']
   return (
     <Frame wide>
-      <div className="mb-5 h-1.5 overflow-hidden rounded-full bg-surface2"><div className="h-full bg-brand transition-all" style={{ width: `${((step + 1) / 6) * 100}%` }} /></div>
+      <div className="mb-5 h-1.5 overflow-hidden rounded-full bg-surface2"><div className="h-full bg-neon transition-all" style={{ width: `${((step + 1) / 6) * 100}%` }} /></div>
       <p className="fine">Step {step + 1} of 6</p>
       <h1 className="mb-1 text-2xl font-bold">{labels[step]}</h1>
 
