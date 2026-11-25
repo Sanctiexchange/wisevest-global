@@ -46,10 +46,10 @@ export default function Landing() {
         <div className="pointer-events-none absolute -bottom-24 -left-20 h-80 w-80 rounded-full bg-neon/20 blur-[90px]" />
         <div className="relative mx-auto max-w-[1120px] px-5">
           <p className="mb-3 text-sm font-semibold text-neon">Bitcoin, energy and real estate projects</p>
-          <h1 className="text-[clamp(2.4rem,7vw,4.6rem)] font-bold leading-[1.05]">Invest in real projects, <span className="grad-text">anywhere in the world.</span></h1>
+          <h1 className="text-[clamp(2.4rem,7vw,4.6rem)] font-bold leading-[1.05]">Invest in real projects, <span className="text-neon">anywhere in the world.</span></h1>
           <p className="mt-5 max-w-[620px] text-lg text-muted">WiseVest Global gives verified clients access to company-managed investment projects, with transparent documents, clear risk disclosure and crypto funding. Bank payments are coming soon.</p>
           <div className="mt-7 flex flex-wrap gap-3.5">
-            <Link to="/projects" className="rounded-full bg-brand px-6 py-3 font-semibold text-[#05050a] shadow-glow">Explore investments</Link>
+            <Link to="/projects" className="rounded-full bg-neon px-6 py-3 font-semibold text-white shadow-glow">Explore investments</Link>
             <Link to="/register" className="rounded-full border border-line px-6 py-3 font-semibold hover:border-violet">Create account</Link>
           </div>
           <div className="mt-9 flex flex-wrap gap-2.5">
@@ -78,7 +78,7 @@ export default function Landing() {
       </section>
 
       <section id="calculator" className="mx-auto max-w-[1120px] scroll-mt-20 px-5 py-16">
-        <h2 className="text-3xl font-bold md:text-4xl">See the range, <span className="grad-text">not just the best case.</span></h2>
+        <h2 className="text-3xl font-bold md:text-4xl">See the range, <span className="text-neon">not just the best case.</span></h2>
         <p className="mb-7 mt-2 max-w-xl text-muted">Explore illustrative outcomes across scenarios, including a loss. These figures are examples, not forecasts or guarantees.</p>
         <Calculator />
       </section>
@@ -88,7 +88,7 @@ export default function Landing() {
         <ol className="grid gap-5 md:grid-cols-4">
           {[['Create and verify', 'Open an account and complete identity verification so your funds and withdrawals are protected.'], ['Choose a project', 'Compare projects, then read the documents and the risk summary.'], ['Fund your way', 'Pay with Bitcoin or stablecoins. Bank payments are coming soon.'], ['Track and withdraw', 'Follow updates in your dashboard and request withdrawals under stated terms.']].map(([t, d], i) => (
             <li key={t} className="rounded-xl2 border border-line bg-surface p-6">
-              <div className="grad-text font-head text-4xl font-bold">{i + 1}</div>
+              <div className="font-head text-4xl font-bold text-neon">{i + 1}</div>
               <h3 className="mt-1 font-bold">{t}</h3>
               <p className="mt-1 text-sm text-muted">{d}</p>
             </li>

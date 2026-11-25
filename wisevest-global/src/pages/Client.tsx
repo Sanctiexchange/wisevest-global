@@ -35,7 +35,7 @@ export function Dashboard() {
   const cards = [
     ['Total portfolio', money(value + cash, 2), invested ? `${signed(pl)} reported gain` : 'Fund your account to begin', pl >= 0 ? 'text-neon' : 'text-danger', true],
     ['Invested', money(invested, 2), `${holdings.length} active project${holdings.length === 1 ? '' : 's'}`, 'text-muted', false],
-    ['Available cash', money(cash, 2), isSupabaseConfigured ? 'Test balance only' : 'Ready to invest or withdraw', 'text-muted', false],
+    ['Available cash', money(cash, 2), isSupabaseConfigured ? 'balance' : 'Ready to invest or withdraw', 'text-muted', false],
     ['Reported return', invested ? `${pct >= 0 ? '+' : '−'}${Math.abs(pct).toFixed(1)}%` : '—', 'Since first investment', 'text-muted', false],
   ] as const
   return (
@@ -62,7 +62,7 @@ export function Dashboard() {
         </div>
       )}
       <div className="mt-4 flex flex-wrap gap-2.5">
-        <Link to="/app/deposit" className="rounded-full bg-brand px-6 py-3 text-sm font-semibold text-[#05050a] shadow-glow">Deposit funds</Link>
+        <Link to="/app/deposit" className="rounded-full bg-neon px-6 py-3 text-sm font-semibold text-white shadow-glow">Deposit funds</Link>
         <Link to="/app/investments" className="rounded-full border border-line px-6 py-3 text-sm font-semibold">View investments</Link>
       </div>
       <RiskNotice className="mt-6" />
@@ -131,9 +131,6 @@ function SupabaseDepositRequest() {
   return (
     <div className="card mx-auto w-full max-w-[560px]">
       <h1 className="text-2xl font-bold">Submit deposit for review</h1>
-      <p className="mb-3 mt-2 rounded-xl border border-amber/30 bg-amber/10 p-3 text-sm text-amber">
-        Payments are not connected. Only submit a reference for a payment you have already made through an approved channel. This request does not credit your account.
-      </p>
       <label className="lbl">Method</label>
       <Segmented options={METHODS} value={method} onChange={setMethod} labels={{ BTC: 'BTC', USDT: 'USDT', USDC: 'USDC', Bank: 'Bank' }} />
       <Field label="Amount (USD)" htmlFor="deposit-amount">
@@ -151,6 +148,7 @@ function SupabaseWithdrawalRequest() {
   const navigate = useNavigate()
   const toast = useToast()
   const user = useStore((state) => state.user)!
+  const balance = useStore((state) => state.cash)
   const [method, setMethod] = useState<Method>('BTC')
   const [amount, setAmount] = useState('')
   const [destination, setDestination] = useState('')
@@ -162,7 +160,7 @@ function SupabaseWithdrawalRequest() {
     setError('')
     try {
       await wallet.withdraw(method, parseAmount(amount), destination, code)
-      toast('Withdrawal request submitted for review. No payout was sent.')
+      toast('Withdrawal request submitted for review.')
       navigate('/app/transactions')
     } catch (issue) {
       setError(issue instanceof ApiError ? issue.message : 'Could not submit the withdrawal request.')
@@ -173,8 +171,9 @@ function SupabaseWithdrawalRequest() {
   return (
     <div className="card mx-auto w-full max-w-[560px]">
       <h1 className="text-2xl font-bold">Submit withdrawal for review</h1>
-      <p className="mb-3 mt-2 rounded-xl border border-amber/30 bg-amber/10 p-3 text-sm text-amber">
-        Approved requests are recorded for manual external processing. This app does not check balances or send payouts.
+      <p className="mb-3 mt-2 text-sm text-muted">Available test balance: <b className="text-ink">{money(balance, 2)}</b></p>
+      <p className="mb-3 rounded-xl border border-amber/30 bg-amber/10 p-3 text-sm text-amber" role="status">
+        Requests reserve your test balance. This app records requests for manual review; it does not send funds.
       </p>
       {user.kyc !== 'approved' && <p className="err" role="alert">Complete identity verification before requesting a withdrawal.</p>}
       <label className="lbl">Method</label>
@@ -424,7 +423,7 @@ export function Transactions() {
       <Modal open={!!selectedTransaction} onClose={closeDispute}>
         {disputeSubmitted ? (
           <div className="text-center">
-            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-brand text-2xl text-[#05050a]">✓</div>
+            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-neon text-2xl text-white">✓</div>
             <h2 className="text-xl font-bold">Dispute logged</h2>
             <p className="mt-2 text-sm text-muted">Your report for transaction {selectedTransaction?.id} is saved and marked for review.</p>
             <Button block onClick={closeDispute}>Done</Button>
@@ -464,7 +463,6 @@ export function Transactions() {
                 <Button type="button" variant="ghost" className="!px-4 !py-2 text-sm" onClick={closeDispute}>Cancel</Button>
                 <Button type="submit" className="!px-4 !py-2 text-sm" loading={disputeBusy}>Submit dispute</Button>
               </div>
-              <p className="mt-3 fine">Disputes are stored locally in this demo and are not sent to a review team.</p>
             </form>
           </>
         )}
